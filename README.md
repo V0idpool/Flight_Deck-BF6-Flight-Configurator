@@ -14,12 +14,17 @@
 Tired of fighting Battlefield 6's default helicopter auto-leveling assist, sluggish stick acceleration, or left-stick throttle?  
 **Flight Deck** is a configuration utility designed for veteran Battlefield pilots, and those that HATE the default controller schemes.
 
-Flight Deck configures your `PROFSAVEbf6mp_profile` file to restore classic **Battlefield 4 Veteran**, **Battlefield 3 Classic**, or **Battlefield 2042 Alternate** flight controls, putting collective/throttle back on **RT / LT**, disabling horrible flight assists, applying true 1:1 or BF4 stick response curves, and protecting your ground vehicle/tank pitch settings from getting inverted (unless you're into that kinda thing).
-
+Flight Deck configures your `PROFSAVEbf6mp_profile` file to restore classic **Battlefield 4 Veteran**, **Battlefield 3 Classic**, or **Battlefield 2042 Alternate** flight controls—or lets you build your own **fully custom button layout** directly on an interactive visual controller map, putting collective/throttle back on **RT / LT**, disabling horrible flight assists, applying true 1:1 or BF4 stick response curves, and protecting your ground vehicle/tank pitch settings from getting inverted (unless you're into that kinda thing).
 ---
 
 ## Key Features
 
+* **Interactive Visual Controller Remapper (Xbox & PlayStation):**
+  * Click any button callout or physical gamepad button on the **Visual Controller Map** to remap Helicopter or Jet controls on the fly.
+  * **Smart 1-Click Assign & Auto-Swap:** Assign any flight action (**Ascend/Throttle**, **Descend/Airbrake**, **Afterburner**, **Fire Weapon**, **Flares / ECM**, **Zoom Optics**, **Chase Cam**, **Freelook**, **Ping / Spot**, **Equipment / Repair**, **Swap Weapon**, **Reload / Exit**, **Switch Seat**) to any controller button, if that button was already in use, Flight Deck automatically swaps the displaced action so nothing gets lost.
+  * **Stack / Combine Actions:** Bind multiple actions onto a single button (such as **Reload + Spot** on **X / Square**).
+  * **Swap, Mirror & Reset:** Swap any two buttons directly, copy your entire Helicopter button layout over to Jet (or vice versa) in one click, unbind individual buttons, or click **RESET BINDS** to restore preset defaults.
+  * Automatically sets BF6 to Custom Button Mode (`Scheme5Buttons 4` / `Scheme2Buttons 4`), disables flight/terrain assists, and writes BF6-validated `GstKeyBinding.version 2000007` multi-slot tables so the game never wipes your custom binds on startup.
 * **4 Built-In Flight Control Schemes:**
   * **Battlefield 4 | Veteran Flight:** Sets Helicopter (`Scheme5`) & Jet (`Scheme2`) buttons to Trigger Throttle (**RT** Ascend / **LT** Descend), disables Helicopter/Plane Assist & Terrain Avoidance, decouples pilot freelook, sets BF4 aiming curves (`Curve = 2`), and eliminates stick aiming acceleration (`0.000000`).
   * **Battlefield 3 | Classic Alternate:** **RT / LT** Throttle paired with pure 1:1 linear BF3 stick response (`Curve = 1`, zero acceleration) and zero flight assist.
@@ -27,9 +32,9 @@ Flight Deck configures your `PROFSAVEbf6mp_profile` file to restore classic **Ba
   * **Battlefield 6 - Stock Default:** Restores all stock BF6 flight physics and default button/stick mappings.
 * **Mix & Match Stick Layouts:** Pair any button preset with **Default**, **Legacy**, **Southpaw**, or **Legacy Southpaw** analog stick layouts.
 * **Tank & Ground Turret Pitch Safeguard:** Toggling **Invert Pitch** only inverts Helicopter & Jet pitch while explicitly locking Ground/Tank schemes (`Scheme1`, `Scheme3`, `Scheme4`) to normal so your tank aiming is never inverted.
-* **Sensitivity & Deadzone Tuning:** Dial in exact Helicopter Sensitivity (`0.10` – `3.00`), Jet Sensitivity (`0.10` – `3.00`), and Center Stick Deadzones (`0.00` – `0.50`).
-* **Interactive Visual Controller Map & Variable Inspector:** Toggle between the live **Visual Controller Map** (showing labeled Helicopter and Jet binds) and the raw `GstInput` table so you see every single variable before patching.
-* **Import & Export Custom Presets (`.json` / `.ini`):** Save your personalized flight configuration and share your custom profile with your squad or the community, or load up a custom profile from a community member!
+* **Sensitivity & Deadzone Tuning:** Dial in exact Helicopter Sensitivity (`0.10` - `3.00`), Jet Sensitivity (`0.10` - `3.00`), and Center Stick Deadzones (`0.00` - `0.50`).
+* **Live Variable Inspector:** Toggle between the interactive **Visual Controller Map** and the raw `GstInput` / `GstKeyBinding` table to inspect every single variable before applying a Flight Deck Profile.
+* **Import, Export & Manage Custom Presets (`.json` / `.ini`):** Save your personalized flight configuration and custom button mappings with a custom title and description, import community profiles directly into the preset dropdown (stored in `CustomPresets\`), or delete custom presets anytime.
 * **Automatic Timestamped Backups & Read-Only Lock:** Every time you click Apply, Flight Deck creates a timestamped `.bak_YYYYMMDD_HHMMSS` backup in your settings folder. Roll back to your latest or original backup anytime via the **Select Backup** menu.
 
 ---
@@ -40,7 +45,7 @@ Flight Deck configures your `PROFSAVEbf6mp_profile` file to restore classic **Ba
 2. Close Battlefield 6 before applying changes so the game does not overwrite your profile on exit.
 3. Run `Flight Deck.exe`. It will automatically detect your `PROFSAVEbf6mp_profile` file inside your `Documents\Battlefield 6\settings` (or OneDrive) folder.  
    *(Note: If browsing manually, always select `PROFSAVEbf6mp_profile`, not the binary `PROFSAVEbf6mp` file.)*
-4. Select your preferred **Buttons** preset, **Sticks** layout, **Invert Pitch** option, and **Sensitivity / Deadzone** values.
+4. Select your preferred **Buttons** preset, **Sticks** layout, **Invert Pitch** option, and **Sensitivity / Deadzone** values. Optionally, bind the buttons manually in the Controller Visualizer to suit your preferences.
 5. Click **APPLY FLIGHT DECK PROFILE** and launch Battlefield 6!
 
 ---
