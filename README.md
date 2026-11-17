@@ -67,20 +67,22 @@ dotnet publish "FlightDeck_BF6 Flight Configurator.csproj" -c Release -r win-x64
 ```
 
 ### Editing Control Placement in Visual Studio Designer (Unlocking & Re-Locking Panels)
-To ensure the UI scales cleanly and stays responsive when resizing the window, most controls in `MainForm` are locked into place using nested layout containers (`TableLayoutPanel`, `FlowLayoutPanel`, `DockStyle.Fill`, and runtime coordinate locks). If you want to move or resize controls in the Visual Studio WinForms Designer, follow these steps:
+To keep the layout responsive when resizing the window, the main sections use nested layout containers (`TableLayoutPanel`, `FlowLayoutPanel`, and `Dock`/`Anchor` rules):
 
-1. **Unlocking Main Sections (`_root` TableLayoutPanel):**
+1. **Resizing Main Sections (`_root` TableLayoutPanel):**
    * The 7 horizontal sections of the app (`_grpProfile`, `_grpPreset`, `_grpInspector`, `_grpBackups`, `_pnlApplySection`, `_txtLog`, and `_pnlFooter`) are docked inside `_root` (`TableLayoutPanel`) with `Dock = DockStyle.Fill`.
-   * **To resize a section's height:** Select `_root` in the Visual Studio Designer (or via the **Document Outline** window: `Ctrl + Alt + T`), click the small arrow `[>]` in the top-right corner of `_root`, and select **Edit Rows and Columns...** to adjust row pixel/percentage heights.
-   * **To freely drag a control inside a panel:** Select the control, open the **Properties** window (`F4`), and change `Dock` from `Fill` (or `Right`/`Left`) to **`None`**. If the control's `Locked` property is set to `True`, set `Locked = False`.
-2. **Editing Backup & Footer Buttons (`FlowLayoutPanel`):**
-   * Controls inside `_pnlBackupActions` and `_pnlFooterLinks` are managed automatically by a `FlowLayoutPanel`.
-   * To reorder them, drag them within the Designer or reorder them in the **Document Outline** (`Ctrl + Alt + T`). To adjust spacing between buttons, edit each control's `Margin` property, or move them into a standard `Panel` if you want manual `Location (X, Y)` dragging.
-3. **Editing Section 2 Sliders & Numeric Inputs (`EnsureCustomControls()` in `MainForm.cs`):**
-   * The custom `FDSlider` controls (`_sldHeliSens`, `_sldJetSens`, `_sldDeadzone`) and their adjacent labels/`NumericUpDown` boxes in Section 2 have their exact `Location` and `Size` enforced at startup inside `MainForm.EnsureCustomControls()` so the Visual Studio Designer cannot accidentally shift or overlap them.
-   * **To move these controls in the Designer:** Comment out the `Location = new Point(...)` and `Size = new Size(...)` overrides at the bottom of `EnsureCustomControls()` in `MainForm.cs`, position the controls where you want them in the Designer, and then update the coordinates in `EnsureCustomControls()` to re-lock them.
-4. **Re-Locking Controls After Editing:**
-   * Once you finish customizing the layout, set the container panels back to `Dock = DockStyle.Fill` (or right-click the control in the Designer and choose **Lock Controls**) so the window maintains proper alignment and scaling.
+   * **To resize a section's height:** Select `_root` in the Visual Studio Designer (or via the **Document Outline** window: `Ctrl + Alt + T`), click the small arrow `[>]` in the top-right corner of `_root`, and select **Edit Rows and Columns...** to adjust row heights.
+   * **To freely drag a docked control inside a panel:** Select the control, open the **Properties** window (`F4`), and change `Dock` from `Fill` (or `Right`/`Left`) to **`None`**. If a control's `Locked` property is set to `True`, set `Locked = False`.
+2. **Editing Section 2 Controls (Presets, Sliders & Buttons):**
+   * All dropdowns, checkboxes, `FDSlider` controls, `NumericUpDown` inputs, and action buttons (`Import Preset`, `Export Preset`, `Delete`) inside `_pnlPresetContent` use standard `Location (X, Y)` coordinates and can be dragged and resized directly on the Designer canvas.
+   * Note that `_btnImportPreset`, `_btnExportPreset`, and `_btnDeletePreset` use `Anchor = Top, Right` so they stay pinned to the right edge when the window is widened.
+3. **Editing Inspector Views (`_padVisualizer` & `_lvBindings`):**
+   * Both `_padVisualizer` (Visual Controller Map) and `_lvBindings` share `_pnlInspectorBody` with `Dock = DockStyle.Fill`. To edit, remove the DockStyle.Fill, and after editing, set it back to DockStyle.Fill.
+4. **Editing Backup & Footer Buttons (`FlowLayoutPanel`):**
+   * Controls inside `_pnlBackupActions` and `_pnlFooterLinks` are arranged automatically by a `FlowLayoutPanel`.
+   * To reorder them, drag them within the Designer or reorder them in the **Document Outline** (`Ctrl + Alt + T`). To adjust spacing between buttons, edit each control's `Margin` property.
+5. **Re-Locking Controls After Editing:**
+   * Once you finish customizing the layout, restore `Dock = DockStyle.Fill` on container panels (or right-click and choose **Lock Controls**) so the window maintains proper alignment and scaling.
 
 ---
 
