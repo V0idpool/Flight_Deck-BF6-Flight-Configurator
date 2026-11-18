@@ -1,5 +1,7 @@
 ﻿#pragma warning disable WFO1000
 
+using FlightDeck_BF6_Flight_Configurator.CORE;
+using FlightDeck_BF6_Flight_Configurator.Helpers;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -430,10 +432,42 @@ namespace FlightDeck_BF6_Flight_Configurator.GUI
         }
     }
 
+    public sealed class ControllerRemapEventArgs : EventArgs
+    {
+        public string Domain { get; }
+        public string SlotKey { get; }
+        public string Concept { get; }
+        public bool StackAction { get; }
+        public string? SwapTargetSlotKey { get; }
+        public bool CopyToOtherVehicle { get; }
+        public bool ResetToDefault { get; }
+
+        public ControllerRemapEventArgs(
+            string domain,
+            string slotKey,
+            string concept = "",
+            bool stackAction = false,
+            string? swapTargetSlotKey = null,
+            bool copyToOtherVehicle = false,
+            bool resetToDefault = false)
+        {
+            Domain = domain;
+            SlotKey = slotKey;
+            Concept = concept;
+            StackAction = stackAction;
+            SwapTargetSlotKey = swapTargetSlotKey;
+            CopyToOtherVehicle = copyToOtherVehicle;
+            ResetToDefault = resetToDefault;
+        }
+    }
+
     public class FDControllerVisualizer : Control
     {
         public enum PadStyle { Xbox, PlayStation }
         public enum VehicleMode { Helicopter, Jet }
+
+        public event EventHandler<ControllerRemapEventArgs>? RemapRequested;
+        public event EventHandler<FlightPresets.StickLayoutType>? StickLayoutSelected;
 
         private PadStyle _style = PadStyle.Xbox;
         [Category("Appearance Cyanogen")]
@@ -455,11 +489,43 @@ namespace FlightDeck_BF6_Flight_Configurator.GUI
 
         private readonly Dictionary<string, string> _heliBinds = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, string> _jetBinds = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, List<string>> _heliSlotActions = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, List<string>> _jetSlotActions = new(StringComparer.OrdinalIgnoreCase);
+
+        private readonly record struct SlotHitZone(string SlotKey, string BadgeLabel, Rectangle BoxRect, Rectangle PadHotspot);
+        private readonly List<SlotHitZone> _hitZones = new();
 
         private Rectangle _rectHeliTab;
         private Rectangle _rectJetTab;
+        private Rectangle _rectResetTab;
         private Rectangle _rectXboxTab;
         private Rectangle _rectPsTab;
+        private string? _hoveredSlotKey;
+        private bool _hoverResetTab;
+        private readonly ContextMenuStrip _cmsRemap;
+
+        private static readonly (string ActionKey, string HeliLabel, string JetLabel, bool HeliOnly, bool JetOnly)[] AvailableActions =
+        [
+            ("Ascend", "Ascend (Up)", "Throttle Up", false, false),
+            ("Descend", "Descend", "Airbrake", false, false),
+            ("Afterburner", "Afterburner", "Afterburner", false, true),
+            ("Fire", "Fire Weapon", "Fire Weapon", false, false),
+            ("Countermeasures", "Flares / ECM", "Flares / ECM", false, false),
+            ("Zoom", "Zoom Optics", "Zoom Optics", false, false),
+            ("ChaseCam", "Chase Cam", "Chase Cam", false, false),
+            ("Freelook", "Freelook", "Freelook", false, false),
+            ("Ping", "Ping / Spot", "Ping / Spot", false, false),
+            ("RepairGadget2", "Equipment / Repair", "Equipment 2", false, false),
+            ("SwapWeapon", "Swap Wpn", "Swap Wpn", false, false),
+            ("ReloadExit", "Reload / Exit", "Reload / Exit", false, false),
+            ("SwitchSeat", "Switch Seat", "Switch Seat", true, false)
+        ];
+
+        private static readonly string[] AllButtonSlots =
+        [
+            "LT", "LB", "LS_CLICK", "DPAD_UP", "DPAD_DOWN", "DPAD_LEFT", "DPAD_RIGHT",
+            "RT", "RB", "RS_CLICK", "BTN_NORTH", "BTN_WEST", "BTN_SOUTH", "BTN_EAST"
+        ];
 
         public FDControllerVisualizer()
         {
@@ -471,35 +537,49 @@ namespace FlightDeck_BF6_Flight_Configurator.GUI
             BackColor = Color.Transparent;
             Size = new Size(858, 195);
             Cursor = Cursors.Default;
+
+            _cmsRemap = new ContextMenuStrip
+            {
+                Renderer = new ToolStripProfessionalRenderer(new ColorTable()),
+                ForeColor = FDPalette.TextPrimary,
+                Font = new Font("Segoe UI", 9f, FontStyle.Regular),
+                ShowImageMargin = true
+            };
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+                _cmsRemap.Dispose();
+            base.Dispose(disposing);
         }
 
         public void LoadScheme(IReadOnlyDictionary<string, string> rawVariables)
         {
             _heliBinds.Clear();
             _jetBinds.Clear();
+            _heliSlotActions.Clear();
+            _jetSlotActions.Clear();
 
-            ParseDomain(rawVariables, "heli", _heliBinds);
-            ParseDomain(rawVariables, "jet", _jetBinds);
+            ParseDomainActions(rawVariables, "helicopter", _heliBinds, _heliSlotActions);
+            ParseDomainActions(rawVariables, "jet", _jetBinds, _jetSlotActions);
 
             Invalidate();
         }
 
-        private static void ParseDomain(IReadOnlyDictionary<string, string> vars, string domain, Dictionary<string, string> target)
+        private static void ParseDomainActions(
+            IReadOnlyDictionary<string, string> vars,
+            string domain,
+            Dictionary<string, string> targetDisplay,
+            Dictionary<string, List<string>> targetActions)
         {
-            var concepts = new HashSet<string>(StringComparer.Ordinal);
-            string prefix = $"GstKeyBinding.{domain}.";
-
-            foreach (string key in vars.Keys)
+            foreach (var (actionKey, slots) in EngineBindings.ActionSlots)
             {
-                if (!key.StartsWith(prefix, StringComparison.Ordinal)) continue;
-                int nextDot = key.IndexOf('.', prefix.Length);
-                if (nextDot > prefix.Length)
-                    concepts.Add(key[prefix.Length..nextDot]);
-            }
+                if (domain == "jet" && actionKey == "SwitchSeat") continue;
+                if (domain == "helicopter" && actionKey == "Afterburner") continue;
 
-            foreach (string concept in concepts)
-            {
-                string baseKey = $"GstKeyBinding.{domain}.{concept}.0";
+                var primary = slots[0];
+                string baseKey = $"GstKeyBinding.{domain}.{primary.Concept}.{primary.SlotIndex}";
                 if (!vars.TryGetValue($"{baseKey}.axis", out string? sAxis) ||
                     !vars.TryGetValue($"{baseKey}.button", out string? sBtn))
                     continue;
@@ -510,80 +590,350 @@ namespace FlightDeck_BF6_Flight_Configurator.GUI
                 string slotKey = MapFrostbiteToSlot(axis, button);
                 if (string.IsNullOrEmpty(slotKey)) continue;
 
-                string friendlyAction = FormatConceptName(concept, domain);
-                if (target.TryGetValue(slotKey, out string? existing))
+                if (!targetActions.TryGetValue(slotKey, out var list))
                 {
-                    if (!existing.Contains(friendlyAction, StringComparison.OrdinalIgnoreCase))
-                        target[slotKey] = $"{existing}/{friendlyAction}";
+                    list = new List<string>();
+                    targetActions[slotKey] = list;
+                }
+                if (!list.Contains(actionKey))
+                    list.Add(actionKey);
+
+                string friendly = FormatActionName(actionKey, domain);
+                if (targetDisplay.TryGetValue(slotKey, out string? existing))
+                {
+                    if (!existing.Contains(friendly, StringComparison.OrdinalIgnoreCase))
+                        targetDisplay[slotKey] = $"{existing}/{friendly}";
                 }
                 else
                 {
-                    target[slotKey] = friendlyAction;
+                    targetDisplay[slotKey] = friendly;
                 }
             }
         }
 
         private static string MapFrostbiteToSlot(int axis, int button) => (axis, button) switch
         {
+            (56, 60) => string.Empty,
             (1, 60) => "LS_Y",
             (0, 60) => "LS_X",
-            (3, 60) => "RS_Y",
-            (2, 60) => "RS_X",
-            (_, 0) => "DPAD_UP",
-            (_, 1) => "DPAD_DOWN",
-            (_, 2) => "DPAD_LEFT",
-            (_, 3) => "DPAD_RIGHT",
-            (_, 4) => "BTN_SOUTH",
-            (_, 5) => "BTN_EAST",
-            (_, 6) => "BTN_WEST",
-            (_, 7) => "BTN_NORTH",
-            (_, 8) => "LB",
-            (_, 9) => "RB",
-            (_, 10) => "LS_CLICK",
-            (_, 11) => "RS_CLICK",
-            (_, 12) => "LT",
-            (_, 13) => "RT",
+            (10, 60) or (3, 60) => "RS_Y",
+            (9, 60) or (2, 60) => "RS_X",
+            (56, 0) => "DPAD_UP",
+            (56, 1) => "DPAD_DOWN",
+            (56, 2) => "DPAD_LEFT",
+            (56, 3) => "DPAD_RIGHT",
+            (56, 4) => "BTN_NORTH",
+            (56, 5) => "BTN_SOUTH",
+            (56, 6) => "BTN_WEST",
+            (56, 7) => "BTN_EAST",
+            (56, 10) => "LS_CLICK",
+            (56, 11) => "RS_CLICK",
+            (56, 14) => "LT",
+            (56, 15) => "RT",
+            (56, 16) => "LB",
+            (56, 17) => "RB",
             _ => string.Empty
         };
 
-        private static string FormatConceptName(string concept, string domain) => concept switch
+        public static string FormatActionName(string actionKey, string domain) => actionKey switch
         {
-            "ConceptMoveFB" => domain == "heli" ? "Ascend (Up)" : "Throttle Up",
-            "ConceptBrake" => domain == "heli" ? "Descend" : "Airbrake",
-            "ConceptCrawl" => "Descend",
-            "ConceptSprint" => "Afterburner",
-            "ConceptYaw" => "Yaw",
-            "ConceptPitch" => "Pitch",
-            "ConceptRoll" => "Roll",
-            "ConceptFire" => "Fire Weapon",
-            "ConceptActivateCountermeasures" => "Flares / ECM",
-            "ConceptZoom" => "Zoom Optics",
-            "ConceptFreeCamera" => "Freelook",
-            "ConceptCameraSwitch" => "Chase Cam",
-            "ConceptSelectInventoryItem1" => "Swap Wpn",
-            "ConceptReload" => "Reload",
-            "ConceptExit" => "Exit",
-            "ConceptSwitchToPrimaryWeapon" => "Switch Seat",
-            _ => concept.Replace("Concept", "")
+            "Ascend" => domain == "jet" ? "Throttle Up" : "Ascend (Up)",
+            "Descend" => domain == "jet" ? "Airbrake" : "Descend",
+            "ThrottleAxis" => "Throttle U/D",
+            "Afterburner" => "Afterburner",
+            "Fire" => "Fire Weapon",
+            "Countermeasures" => "Flares / ECM",
+            "RepairGadget2" => "Equip / Repair",
+            "Zoom" => "Zoom Optics",
+            "ChaseCam" => "Chase Cam",
+            "Freelook" => "Freelook",
+            "Ping" => "Ping / Spot",
+            "SwapWeapon" => "Swap Wpn",
+            "ReloadExit" => "Reload / Exit",
+            "SwitchSeat" => "Switch Seat",
+            "Yaw" => "Yaw",
+            "Pitch" => "Pitch",
+            "Roll" => "Roll",
+            _ => actionKey
         };
+
+        public string GetFriendlySlotName(string slotKey)
+        {
+            bool isPs = _style == PadStyle.PlayStation;
+            return slotKey switch
+            {
+                "LT" => isPs ? "L2 Trigger" : "LT Trigger",
+                "RT" => isPs ? "R2 Trigger" : "RT Trigger",
+                "LB" => isPs ? "L1 Bumper" : "LB Bumper",
+                "RB" => isPs ? "R1 Bumper" : "RB Bumper",
+                "LS_CLICK" => isPs ? "L3 (Left Stick Click)" : "LS Click (Left Stick)",
+                "RS_CLICK" => isPs ? "R3 (Right Stick Click)" : "RS Click (Right Stick)",
+                "DPAD_UP" => "D-Pad Up",
+                "DPAD_DOWN" => "D-Pad Down",
+                "DPAD_LEFT" => "D-Pad Left",
+                "DPAD_RIGHT" => "D-Pad Right",
+                "BTN_NORTH" => isPs ? "△ Triangle" : "Y Button",
+                "BTN_WEST" => isPs ? "□ Square" : "X Button",
+                "BTN_SOUTH" => isPs ? "✕ Cross" : "A Button",
+                "BTN_EAST" => isPs ? "○ Circle" : "B Button",
+                "LS_AXES" => "Left Analog Stick",
+                "RS_AXES" => "Right Analog Stick",
+                _ => slotKey
+            };
+        }
+
+        protected override void OnMouseLeave(EventArgs e)
+        {
+            base.OnMouseLeave(e);
+            if (_hoveredSlotKey is not null || _hoverResetTab)
+            {
+                _hoveredSlotKey = null;
+                _hoverResetTab = false;
+                Invalidate();
+            }
+        }
 
         protected override void OnMouseMove(MouseEventArgs e)
         {
             base.OnMouseMove(e);
-            bool overToggle = _rectHeliTab.Contains(e.Location) || _rectJetTab.Contains(e.Location) ||
+
+            bool overTopTab = _rectHeliTab.Contains(e.Location) || _rectJetTab.Contains(e.Location) ||
                               _rectXboxTab.Contains(e.Location) || _rectPsTab.Contains(e.Location);
-            Cursor = overToggle ? Cursors.Hand : Cursors.Default;
+            bool overReset = _rectResetTab.Contains(e.Location);
+
+            string? hitSlot = null;
+            foreach (var zone in _hitZones)
+            {
+                if (zone.BoxRect.Contains(e.Location) || zone.PadHotspot.Contains(e.Location))
+                {
+                    hitSlot = zone.SlotKey;
+                    break;
+                }
+            }
+
+            if (hitSlot != _hoveredSlotKey || overReset != _hoverResetTab)
+            {
+                _hoveredSlotKey = hitSlot;
+                _hoverResetTab = overReset;
+                Invalidate();
+            }
+
+            Cursor = (overTopTab || overReset || hitSlot is not null) ? Cursors.Hand : Cursors.Default;
         }
 
         protected override void OnMouseDown(MouseEventArgs e)
         {
             base.OnMouseDown(e);
-            if (e.Button != MouseButtons.Left) return;
+            if (e.Button != MouseButtons.Left && e.Button != MouseButtons.Right) return;
 
             if (_rectHeliTab.Contains(e.Location)) { ActiveVehicle = VehicleMode.Helicopter; return; }
             if (_rectJetTab.Contains(e.Location)) { ActiveVehicle = VehicleMode.Jet; return; }
             if (_rectXboxTab.Contains(e.Location)) { ControllerStyle = PadStyle.Xbox; return; }
             if (_rectPsTab.Contains(e.Location)) { ControllerStyle = PadStyle.PlayStation; return; }
+
+            if (_rectResetTab.Contains(e.Location))
+            {
+                string domain = _vehicle == VehicleMode.Helicopter ? "helicopter" : "jet";
+                RemapRequested?.Invoke(this, new ControllerRemapEventArgs(domain, string.Empty, resetToDefault: true));
+                return;
+            }
+
+            foreach (var zone in _hitZones)
+            {
+                if (zone.BoxRect.Contains(e.Location) || zone.PadHotspot.Contains(e.Location))
+                {
+                    ShowRemapMenuForSlot(zone.SlotKey, new Point(zone.BoxRect.Left, zone.BoxRect.Bottom + 2));
+                    return;
+                }
+            }
+        }
+
+        private void ShowRemapMenuForSlot(string slotKey, Point menuLocation)
+        {
+            _cmsRemap.Items.Clear();
+            string domain = _vehicle == VehicleMode.Helicopter ? "helicopter" : "jet";
+            string vehicleTitle = _vehicle == VehicleMode.Helicopter ? "Helicopter" : "Jet";
+            var activeBinds = _vehicle == VehicleMode.Helicopter ? _heliBinds : _jetBinds;
+            var activeActionsMap = _vehicle == VehicleMode.Helicopter ? _heliSlotActions : _jetSlotActions;
+
+            if (slotKey is "LS_AXES" or "RS_AXES")
+            {
+                var header = new ToolStripMenuItem($"Analog Stick Layout ({vehicleTitle} & Air)")
+                {
+                    Enabled = false,
+                    Font = new Font("Segoe UI", 9f, FontStyle.Bold),
+                    ForeColor = FDPalette.AccentCyan
+                };
+                _cmsRemap.Items.Add(header);
+                _cmsRemap.Items.Add(new ToolStripSeparator());
+
+                (FlightPresets.StickLayoutType Type, string Label)[] layouts =
+                [
+                    (FlightPresets.StickLayoutType.Default, "Default (LS: Yaw  |  RS: Pitch & Roll)"),
+                    (FlightPresets.StickLayoutType.Legacy, "Legacy (LS: Roll  |  RS: Pitch & Yaw)"),
+                    (FlightPresets.StickLayoutType.Southpaw, "Southpaw (LS: Pitch & Roll  |  RS: Yaw)"),
+                    (FlightPresets.StickLayoutType.LegacySouthpaw, "Legacy Southpaw (LS: Pitch & Yaw  |  RS: Roll)")
+                ];
+
+                foreach (var (sType, sLabel) in layouts)
+                {
+                    var item = new ToolStripMenuItem(sLabel) { ForeColor = FDPalette.TextPrimary };
+                    item.Click += (_, _) => StickLayoutSelected?.Invoke(this, sType);
+                    _cmsRemap.Items.Add(item);
+                }
+
+                _cmsRemap.Show(this, menuLocation);
+                return;
+            }
+
+            string friendlySlot = GetFriendlySlotName(slotKey);
+            string currentAction = GetBind(activeBinds, slotKey);
+            activeActionsMap.TryGetValue(slotKey, out var currentSlotActions);
+            currentSlotActions ??= [];
+
+            var titleItem = new ToolStripMenuItem($"Remap {friendlySlot}  —  {vehicleTitle}")
+            {
+                Enabled = false,
+                Font = new Font("Segoe UI", 9f, FontStyle.Bold),
+                ForeColor = FDPalette.AccentCyan
+            };
+            _cmsRemap.Items.Add(titleItem);
+
+            var currentSubItem = new ToolStripMenuItem($"Current: {currentAction}")
+            {
+                Enabled = false,
+                Font = new Font("Segoe UI", 8.25f, FontStyle.Italic),
+                ForeColor = FDPalette.TextSecondary
+            };
+            _cmsRemap.Items.Add(currentSubItem);
+            _cmsRemap.Items.Add(new ToolStripSeparator());
+
+            foreach (var act in AvailableActions)
+            {
+                if (domain == "helicopter" && act.JetOnly) continue;
+                if (domain == "jet" && act.HeliOnly) continue;
+
+                string label = domain == "helicopter" ? act.HeliLabel : act.JetLabel;
+                string ownerSlot = FindSlotForAction(activeActionsMap, act.ActionKey);
+                string ownerSuffix = !string.IsNullOrEmpty(ownerSlot) && !ownerSlot.Equals(slotKey, StringComparison.OrdinalIgnoreCase)
+                    ? $"   [{GetShortBadge(ownerSlot)}]"
+                    : string.Empty;
+
+                bool isChecked = currentSlotActions.Contains(act.ActionKey);
+                var actionItem = new ToolStripMenuItem($"{label}{ownerSuffix}")
+                {
+                    Checked = isChecked,
+                    ForeColor = isChecked ? FDPalette.AccentCyan : FDPalette.TextPrimary,
+                    Font = new Font("Segoe UI", 9f, isChecked ? FontStyle.Bold : FontStyle.Regular)
+                };
+                actionItem.Click += (_, _) =>
+                    RemapRequested?.Invoke(this, new ControllerRemapEventArgs(domain, slotKey, act.ActionKey, stackAction: false));
+                _cmsRemap.Items.Add(actionItem);
+            }
+
+            _cmsRemap.Items.Add(new ToolStripSeparator());
+
+            var stackMenu = new ToolStripMenuItem("Stack / Combine Action on This Button")
+            {
+                ForeColor = FDPalette.TextPrimary
+            };
+            foreach (var act in AvailableActions)
+            {
+                if (domain == "helicopter" && act.JetOnly) continue;
+                if (domain == "jet" && act.HeliOnly) continue;
+
+                string label = domain == "helicopter" ? act.HeliLabel : act.JetLabel;
+                bool isChecked = currentSlotActions.Contains(act.ActionKey);
+                var subItem = new ToolStripMenuItem($"Toggle + {label}")
+                {
+                    Checked = isChecked,
+                    ForeColor = FDPalette.TextPrimary
+                };
+                subItem.Click += (_, _) =>
+                    RemapRequested?.Invoke(this, new ControllerRemapEventArgs(domain, slotKey, act.ActionKey, stackAction: true));
+                stackMenu.DropDownItems.Add(subItem);
+            }
+            _cmsRemap.Items.Add(stackMenu);
+
+            var swapMenu = new ToolStripMenuItem("Swap Button With...")
+            {
+                ForeColor = FDPalette.TextPrimary
+            };
+            foreach (string otherSlot in AllButtonSlots)
+            {
+                if (otherSlot.Equals(slotKey, StringComparison.OrdinalIgnoreCase)) continue;
+                string otherAct = GetBind(activeBinds, otherSlot);
+                var swapItem = new ToolStripMenuItem($"{GetShortBadge(otherSlot)}  ({otherAct})")
+                {
+                    ForeColor = FDPalette.TextPrimary
+                };
+                swapItem.Click += (_, _) =>
+                    RemapRequested?.Invoke(this, new ControllerRemapEventArgs(domain, slotKey, swapTargetSlotKey: otherSlot));
+                swapMenu.DropDownItems.Add(swapItem);
+            }
+            _cmsRemap.Items.Add(swapMenu);
+
+            string otherVehicleName = _vehicle == VehicleMode.Helicopter ? "Jet" : "Helicopter";
+            var copyToOtherItem = new ToolStripMenuItem($"Copy All {vehicleTitle} Button Binds to {otherVehicleName}")
+            {
+                ForeColor = FDPalette.HudGreen
+            };
+            copyToOtherItem.Click += (_, _) =>
+                RemapRequested?.Invoke(this, new ControllerRemapEventArgs(domain, slotKey, copyToOtherVehicle: true));
+            _cmsRemap.Items.Add(copyToOtherItem);
+
+            _cmsRemap.Items.Add(new ToolStripSeparator());
+
+            var clearItem = new ToolStripMenuItem($"Unbind / Clear {GetShortBadge(slotKey)}")
+            {
+                ForeColor = FDPalette.AccentOrange
+            };
+            clearItem.Click += (_, _) =>
+                RemapRequested?.Invoke(this, new ControllerRemapEventArgs(domain, slotKey, concept: "UNBIND"));
+            _cmsRemap.Items.Add(clearItem);
+
+            var resetItem = new ToolStripMenuItem("Reset All Binds to Preset Default")
+            {
+                ForeColor = FDPalette.TextSecondary
+            };
+            resetItem.Click += (_, _) =>
+                RemapRequested?.Invoke(this, new ControllerRemapEventArgs(domain, slotKey, resetToDefault: true));
+            _cmsRemap.Items.Add(resetItem);
+
+            _cmsRemap.Show(this, menuLocation);
+        }
+
+        private static string FindSlotForAction(Dictionary<string, List<string>> slotActions, string actionKey)
+        {
+            foreach (var (slot, list) in slotActions)
+            {
+                if (list.Contains(actionKey))
+                    return slot;
+            }
+            return string.Empty;
+        }
+
+        private string GetShortBadge(string slotKey)
+        {
+            bool isPs = _style == PadStyle.PlayStation;
+            return slotKey switch
+            {
+                "LT" => isPs ? "L2" : "LT",
+                "RT" => isPs ? "R2" : "RT",
+                "LB" => isPs ? "L1" : "LB",
+                "RB" => isPs ? "R1" : "RB",
+                "LS_CLICK" => isPs ? "L3" : "LS",
+                "RS_CLICK" => isPs ? "R3" : "RS",
+                "DPAD_UP" => "D-UP",
+                "DPAD_DOWN" => "D-DN",
+                "DPAD_LEFT" => "D-LF",
+                "DPAD_RIGHT" => "D-RT",
+                "BTN_NORTH" => isPs ? "△" : "Y",
+                "BTN_WEST" => isPs ? "□" : "X",
+                "BTN_SOUTH" => isPs ? "✕" : "A",
+                "BTN_EAST" => isPs ? "○" : "B",
+                _ => slotKey
+            };
         }
 
         protected override void OnPaint(PaintEventArgs e)
@@ -613,42 +963,87 @@ namespace FlightDeck_BF6_Flight_Configurator.GUI
 
             DrawControllerBody(g, cx, cy, isPs);
 
-            int boxW = Math.Clamp((Width - 230) / 2, 220, 305);
+            _hitZones.Clear();
+
+            int boxW = Math.Clamp((Width - 220) / 2, 220, 320);
             int leftBoxX = 12;
             int rightBoxX = Width - boxW - 12;
 
-            string lsAxes = CombineAxes(activeMap, "LS_Y", "LS_X", "LS_CLICK");
-            string rsAxes = CombineAxes(activeMap, "RS_Y", "RS_X", "RS_CLICK");
+            string lsAxes = CombineAxes(activeMap, "LS_Y", "LS_X");
+            string rsAxes = CombineAxes(activeMap, "RS_Y", "RS_X");
 
-            int startY = 34;
-            int stepY = Math.Max(22, (Height - startY - 6) / 5);
+            int startY = 33;
+            int stepY = Math.Max(22, (Height - startY - 5) / 5);
 
-            DrawCalloutRow(g, leftBoxX, startY + stepY * 0, boxW, isPs ? "L2" : "LT", GetBind(activeMap, "LT"), new Point(cx - 52, cy - 42), true);
-            DrawCalloutRow(g, leftBoxX, startY + stepY * 1, boxW, isPs ? "L1" : "LB", GetBind(activeMap, "LB"), new Point(cx - 56, cy - 30), true);
-            DrawCalloutRow(g, leftBoxX, startY + stepY * 2, boxW, isPs ? "L3" : "LS", lsAxes, new Point(cx - 42, cy - 6), true);
-            DrawCalloutRow(g, leftBoxX, startY + stepY * 3, boxW, "D-UP", GetBind(activeMap, "DPAD_UP"), new Point(cx - 26, cy + 14), true);
-            DrawCalloutRow(g, leftBoxX, startY + stepY * 4, boxW, "D-L/D", CombineAxes(activeMap, "DPAD_LEFT", "DPAD_DOWN"), new Point(cx - 32, cy + 22), true);
+            Point lsTarget = isPs ? new Point(cx - 26, cy + 12) : new Point(cx - 42, cy - 10);
+            Point dpadCenter = isPs ? new Point(cx - 42, cy - 10) : new Point(cx - 26, cy + 16);
+            Point rsTarget = new(cx + 26, cy + 12);
+            Point fbCenter = new(cx + 44, cy - 10);
 
-            DrawCalloutRow(g, rightBoxX, startY + stepY * 0, boxW, isPs ? "R2" : "RT", GetBind(activeMap, "RT"), new Point(cx + 52, cy - 42), false);
-            DrawCalloutRow(g, rightBoxX, startY + stepY * 1, boxW, isPs ? "R1" : "RB", GetBind(activeMap, "RB"), new Point(cx + 56, cy - 30), false);
-            DrawCalloutRow(g, rightBoxX, startY + stepY * 2, boxW, isPs ? "R3" : "RS", rsAxes, new Point(cx + 28, cy + 14), false);
-            DrawCalloutRow(g, rightBoxX, startY + stepY * 3, boxW, isPs ? "△ / □" : "Y / X", CombineButtons(activeMap, "BTN_NORTH", "BTN_WEST", isPs ? "△" : "Y", isPs ? "□" : "X"), new Point(cx + 48, cy - 12), false);
-            DrawCalloutRow(g, rightBoxX, startY + stepY * 4, boxW, isPs ? "✕ / ○" : "A / B", CombineButtons(activeMap, "BTN_SOUTH", "BTN_EAST", isPs ? "✕" : "A", isPs ? "○" : "B"), new Point(cx + 48, cy - 2), false);
+            int gap = 5;
+            int halfW = (boxW - gap) / 2;
+            int stickW = (int)((boxW - gap) * 0.54f);
+            int clickW = boxW - gap - stickW;
+
+            DrawInteractiveRow(g, "LT", leftBoxX, startY + stepY * 0, boxW, isPs ? "L2" : "LT", GetBind(activeMap, "LT"),
+                new Point(cx - 52, cy - 42), new Rectangle(cx - 66, cy - 54, 32, 16), true, true);
+            DrawInteractiveRow(g, "LB", leftBoxX, startY + stepY * 1, boxW, isPs ? "L1" : "LB", GetBind(activeMap, "LB"),
+                new Point(cx - 56, cy - 30), new Rectangle(cx - 72, cy - 38, 32, 14), true, true);
+            DrawInteractiveRow(g, "LS_AXES", leftBoxX, startY + stepY * 2, stickW, "LS", lsAxes,
+                lsTarget, new Rectangle(lsTarget.X - 13, lsTarget.Y - 13, 26, 26), true, false);
+            DrawInteractiveRow(g, "LS_CLICK", leftBoxX + stickW + gap, startY + stepY * 2, clickW, isPs ? "L3" : "LSC", GetBind(activeMap, "LS_CLICK"),
+                lsTarget, Rectangle.Empty, true, true);
+            DrawInteractiveRow(g, "DPAD_UP", leftBoxX, startY + stepY * 3, halfW, "D-UP", GetBind(activeMap, "DPAD_UP"),
+                new Point(dpadCenter.X, dpadCenter.Y - 8), new Rectangle(dpadCenter.X - 6, dpadCenter.Y - 13, 12, 9), true, false);
+            DrawInteractiveRow(g, "DPAD_DOWN", leftBoxX + halfW + gap, startY + stepY * 3, boxW - halfW - gap, "D-DN", GetBind(activeMap, "DPAD_DOWN"),
+                new Point(dpadCenter.X, dpadCenter.Y + 8), new Rectangle(dpadCenter.X - 6, dpadCenter.Y + 4, 12, 9), true, true);
+            DrawInteractiveRow(g, "DPAD_LEFT", leftBoxX, startY + stepY * 4, halfW, "D-LF", GetBind(activeMap, "DPAD_LEFT"),
+                new Point(dpadCenter.X - 8, dpadCenter.Y), new Rectangle(dpadCenter.X - 13, dpadCenter.Y - 6, 9, 12), true, false);
+            DrawInteractiveRow(g, "DPAD_RIGHT", leftBoxX + halfW + gap, startY + stepY * 4, boxW - halfW - gap, "D-RT", GetBind(activeMap, "DPAD_RIGHT"),
+                new Point(dpadCenter.X + 8, dpadCenter.Y), new Rectangle(dpadCenter.X + 4, dpadCenter.Y - 6, 9, 12), true, true);
+            DrawInteractiveRow(g, "RT", rightBoxX, startY + stepY * 0, boxW, isPs ? "R2" : "RT", GetBind(activeMap, "RT"),
+                new Point(cx + 52, cy - 42), new Rectangle(cx + 34, cy - 54, 32, 16), false, true);
+            DrawInteractiveRow(g, "RB", rightBoxX, startY + stepY * 1, boxW, isPs ? "R1" : "RB", GetBind(activeMap, "RB"),
+                new Point(cx + 56, cy - 30), new Rectangle(cx + 40, cy - 38, 32, 14), false, true);
+            DrawInteractiveRow(g, "RS_AXES", rightBoxX, startY + stepY * 2, stickW, "RS", rsAxes,
+                rsTarget, new Rectangle(rsTarget.X - 13, rsTarget.Y - 13, 26, 26), false, true);
+            DrawInteractiveRow(g, "RS_CLICK", rightBoxX + stickW + gap, startY + stepY * 2, clickW, isPs ? "R3" : "RSC", GetBind(activeMap, "RS_CLICK"),
+                rsTarget, Rectangle.Empty, false, false);
+            DrawInteractiveRow(g, "BTN_NORTH", rightBoxX, startY + stepY * 3, halfW, isPs ? "△" : "Y", GetBind(activeMap, "BTN_NORTH"),
+                new Point(fbCenter.X, fbCenter.Y - 9), new Rectangle(fbCenter.X - 5, fbCenter.Y - 14, 10, 10), false, true);
+            DrawInteractiveRow(g, "BTN_WEST", rightBoxX + halfW + gap, startY + stepY * 3, boxW - halfW - gap, isPs ? "□" : "X", GetBind(activeMap, "BTN_WEST"),
+                new Point(fbCenter.X - 9, fbCenter.Y), new Rectangle(fbCenter.X - 14, fbCenter.Y - 5, 10, 10), false, false);
+            DrawInteractiveRow(g, "BTN_SOUTH", rightBoxX, startY + stepY * 4, halfW, isPs ? "✕" : "A", GetBind(activeMap, "BTN_SOUTH"),
+                new Point(fbCenter.X, fbCenter.Y + 9), new Rectangle(fbCenter.X - 5, fbCenter.Y + 4, 10, 10), false, true);
+            DrawInteractiveRow(g, "BTN_EAST", rightBoxX + halfW + gap, startY + stepY * 4, boxW - halfW - gap, isPs ? "○" : "B", GetBind(activeMap, "BTN_EAST"),
+                new Point(fbCenter.X + 9, fbCenter.Y), new Rectangle(fbCenter.X + 4, fbCenter.Y - 5, 10, 10), false, false);
         }
 
         private void DrawTopToggles(Graphics g)
         {
-            _rectHeliTab = new Rectangle(12, 7, 98, 22);
-            _rectJetTab = new Rectangle(114, 7, 78, 22);
+            _rectHeliTab = new Rectangle(12, 6, 94, 21);
+            _rectJetTab = new Rectangle(110, 6, 68, 21);
+            _rectResetTab = new Rectangle(184, 6, 94, 21);
 
-            _rectPsTab = new Rectangle(Width - 112, 7, 100, 22);
-            _rectXboxTab = new Rectangle(Width - 196, 7, 80, 22);
+            _rectPsTab = new Rectangle(Width - 110, 6, 98, 21);
+            _rectXboxTab = new Rectangle(Width - 190, 6, 76, 21);
 
             DrawPillTab(g, _rectHeliTab, "HELICOPTER", _vehicle == VehicleMode.Helicopter, FDPalette.AccentCyan);
             DrawPillTab(g, _rectJetTab, "JET", _vehicle == VehicleMode.Jet, FDPalette.AccentCyan);
+            DrawPillTab(g, _rectResetTab, "RESET BINDS", _hoverResetTab, FDPalette.AccentOrange);
 
             DrawPillTab(g, _rectXboxTab, "XBOX", _style == PadStyle.Xbox, FDPalette.HudGreen);
             DrawPillTab(g, _rectPsTab, "PLAYSTATION", _style == PadStyle.PlayStation, Color.FromArgb(80, 150, 255));
+
+            int hintLeft = _rectResetTab.Right + 8;
+            int hintWidth = _rectXboxTab.Left - hintLeft - 8;
+            if (hintWidth > 120)
+            {
+                Rectangle hintRect = new(hintLeft, 6, hintWidth, 21);
+                using Font hintFont = new("Segoe UI", 7.75f, FontStyle.Italic);
+                TextRenderer.DrawText(g, "Click any button or callout to remap", hintFont, hintRect, FDPalette.TextSecondary,
+                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+            }
         }
 
         private static void DrawPillTab(Graphics g, Rectangle rect, string text, bool active, Color activeColor)
@@ -659,12 +1054,12 @@ namespace FlightDeck_BF6_Flight_Configurator.GUI
             g.FillPath(bg, path);
             g.DrawPath(border, path);
 
-            using Font f = new("Segoe UI", 7.75f, FontStyle.Bold);
+            using Font f = new("Segoe UI", 7.5f, FontStyle.Bold);
             Color fg = active ? Color.White : FDPalette.TextSecondary;
             TextRenderer.DrawText(g, text, f, rect, fg, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
         }
 
-        private static void DrawControllerBody(Graphics g, int cx, int cy, bool isPs)
+        private void DrawControllerBody(Graphics g, int cx, int cy, bool isPs)
         {
             using GraphicsPath padPath = new();
             padPath.AddArc(cx - 78, cy - 42, 45, 45, 180, 90);
@@ -685,87 +1080,147 @@ namespace FlightDeck_BF6_Flight_Configurator.GUI
                 g.DrawPath(bodyPen, padPath);
             }
 
-            using Pen shoulderPen = new(FDPalette.BorderFocus, 1.2f);
-            g.DrawArc(shoulderPen, cx - 64, cy - 52, 30, 16, 180, 180);
-            g.DrawArc(shoulderPen, cx + 34, cy - 52, 30, 16, 180, 180);
+            bool ltHover = _hoveredSlotKey is "LT" or "LB";
+            bool rtHover = _hoveredSlotKey is "RT" or "RB";
+            using (Pen leftShoulderPen = new(ltHover ? FDPalette.AccentOrange : FDPalette.BorderFocus, ltHover ? 2.2f : 1.2f))
+            using (Pen rightShoulderPen = new(rtHover ? FDPalette.AccentOrange : FDPalette.BorderFocus, rtHover ? 2.2f : 1.2f))
+            {
+                g.DrawArc(leftShoulderPen, cx - 64, cy - 52, 30, 16, 180, 180);
+                g.DrawArc(rightShoulderPen, cx + 34, cy - 52, 30, 16, 180, 180);
+            }
 
             Point lsCenter = isPs ? new Point(cx - 26, cy + 12) : new Point(cx - 42, cy - 10);
             Point dpadCenter = isPs ? new Point(cx - 42, cy - 10) : new Point(cx - 26, cy + 16);
             Point rsCenter = new(cx + 26, cy + 12);
 
-            using SolidBrush stickBrush = new(Color.FromArgb(16, 20, 26));
-            using Pen stickPen = new(FDPalette.AccentCyan, 1.5f);
+            bool lsHover = _hoveredSlotKey is "LS_AXES" or "LS_CLICK";
+            bool rsHover = _hoveredSlotKey is "RS_AXES" or "RS_CLICK";
 
-            g.FillEllipse(stickBrush, lsCenter.X - 12, lsCenter.Y - 12, 24, 24);
-            g.DrawEllipse(stickPen, lsCenter.X - 12, lsCenter.Y - 12, 24, 24);
+            using (SolidBrush lsBrush = new(lsHover ? Color.FromArgb(45, FDPalette.AccentOrange) : Color.FromArgb(16, 20, 26)))
+            using (Pen lsPen = new(lsHover ? FDPalette.AccentOrange : FDPalette.AccentCyan, lsHover ? 2.2f : 1.5f))
+            {
+                g.FillEllipse(lsBrush, lsCenter.X - 12, lsCenter.Y - 12, 24, 24);
+                g.DrawEllipse(lsPen, lsCenter.X - 12, lsCenter.Y - 12, 24, 24);
+            }
 
-            g.FillEllipse(stickBrush, rsCenter.X - 12, rsCenter.Y - 12, 24, 24);
-            g.DrawEllipse(stickPen, rsCenter.X - 12, rsCenter.Y - 12, 24, 24);
+            using (SolidBrush rsBrush = new(rsHover ? Color.FromArgb(45, FDPalette.AccentOrange) : Color.FromArgb(16, 20, 26)))
+            using (Pen rsPen = new(rsHover ? FDPalette.AccentOrange : FDPalette.AccentCyan, rsHover ? 2.2f : 1.5f))
+            {
+                g.FillEllipse(rsBrush, rsCenter.X - 12, rsCenter.Y - 12, 24, 24);
+                g.DrawEllipse(rsPen, rsCenter.X - 12, rsCenter.Y - 12, 24, 24);
+            }
 
-            using Pen dpadPen = new(FDPalette.TextSecondary, 1.2f);
-            g.DrawRectangle(dpadPen, dpadCenter.X - 4, dpadCenter.Y - 11, 8, 22);
-            g.DrawRectangle(dpadPen, dpadCenter.X - 11, dpadCenter.Y - 4, 22, 8);
+            bool dpadHover = _hoveredSlotKey is "DPAD_UP" or "DPAD_DOWN" or "DPAD_LEFT" or "DPAD_RIGHT";
+            using (Pen dpadPen = new(dpadHover ? FDPalette.AccentOrange : FDPalette.TextSecondary, dpadHover ? 1.8f : 1.2f))
+            {
+                g.DrawRectangle(dpadPen, dpadCenter.X - 4, dpadCenter.Y - 11, 8, 22);
+                g.DrawRectangle(dpadPen, dpadCenter.X - 11, dpadCenter.Y - 4, 22, 8);
+            }
 
             int fbX = cx + 44;
             int fbY = cy - 10;
-            using Pen btnPen = new(FDPalette.AccentOrange, 1.2f);
-            g.DrawEllipse(btnPen, fbX - 4, fbY - 13, 8, 8);
-            g.DrawEllipse(btnPen, fbX - 4, fbY + 5, 8, 8);
-            g.DrawEllipse(btnPen, fbX - 13, fbY - 4, 8, 8);
-            g.DrawEllipse(btnPen, fbX + 5, fbY - 4, 8, 8);
+            DrawFaceButton(g, new Rectangle(fbX - 4, fbY - 13, 8, 8), _hoveredSlotKey == "BTN_NORTH");
+            DrawFaceButton(g, new Rectangle(fbX - 4, fbY + 5, 8, 8), _hoveredSlotKey == "BTN_SOUTH");
+            DrawFaceButton(g, new Rectangle(fbX - 13, fbY - 4, 8, 8), _hoveredSlotKey == "BTN_WEST");
+            DrawFaceButton(g, new Rectangle(fbX + 5, fbY - 4, 8, 8), _hoveredSlotKey == "BTN_EAST");
         }
 
-        private static void DrawCalloutRow(Graphics g, int x, int y, int width, string badge, string actionText, Point targetPt, bool isLeft)
+        private static void DrawFaceButton(Graphics g, Rectangle rect, bool hovered)
+        {
+            if (hovered)
+            {
+                using SolidBrush fill = new(FDPalette.AccentCyan);
+                g.FillEllipse(fill, rect);
+            }
+            using Pen pen = new(hovered ? Color.White : FDPalette.AccentOrange, hovered ? 1.8f : 1.2f);
+            g.DrawEllipse(pen, rect);
+        }
+
+        private void DrawInteractiveRow(
+            Graphics g,
+            string slotKey,
+            int x,
+            int y,
+            int width,
+            string badge,
+            string actionText,
+            Point targetPt,
+            Rectangle padHotspot,
+            bool isLeft,
+            bool drawLeaderLine)
         {
             bool isBound = !string.IsNullOrEmpty(actionText) && actionText != "Unbound";
+            bool isHovered = string.Equals(_hoveredSlotKey, slotKey, StringComparison.OrdinalIgnoreCase);
             Rectangle rowRect = new(x, y, width, 22);
 
-            Point lineStart = isLeft ? new Point(rowRect.Right, y + 11) : new Point(rowRect.Left, y + 11);
-            Point elbow = isLeft ? new Point(lineStart.X + 12, y + 11) : new Point(lineStart.X - 12, y + 11);
+            _hitZones.Add(new SlotHitZone(slotKey, badge, rowRect, padHotspot));
 
-            using (Pen leaderPen = new(isBound ? Color.FromArgb(110, FDPalette.AccentCyan) : Color.FromArgb(45, 70, 80, 95), 1f))
+            if (drawLeaderLine || isHovered)
             {
+                Point lineStart = isLeft ? new Point(rowRect.Right, y + 11) : new Point(rowRect.Left, y + 11);
+                Point elbow = isLeft ? new Point(lineStart.X + 10, y + 11) : new Point(lineStart.X - 10, y + 11);
+
+                Color lineColor = isHovered
+                    ? FDPalette.AccentOrange
+                    : (isBound ? Color.FromArgb(105, FDPalette.AccentCyan) : Color.FromArgb(40, 70, 80, 95));
+
+                using Pen leaderPen = new(lineColor, isHovered ? 1.6f : 1f);
                 g.DrawLine(leaderPen, lineStart, elbow);
                 g.DrawLine(leaderPen, elbow, targetPt);
             }
 
+            Color boxBg = isHovered ? FDPalette.SurfaceHover : Color.FromArgb(24, 30, 39);
+            Color boxBorder = isHovered
+                ? FDPalette.AccentOrange
+                : (isBound ? Color.FromArgb(95, FDPalette.AccentCyan) : FDPalette.BorderSubtle);
+
             using (GraphicsPath path = ThemeModule.GetResponsiveRoundedPath(rowRect, 4))
-            using (SolidBrush bg = new(Color.FromArgb(24, 30, 39)))
-            using (Pen border = new(isBound ? Color.FromArgb(90, FDPalette.AccentCyan) : FDPalette.BorderSubtle, 1f))
+            using (SolidBrush bg = new(boxBg))
+            using (Pen border = new(boxBorder, isHovered ? 1.5f : 1f))
             {
                 g.FillPath(bg, path);
                 g.DrawPath(border, path);
             }
 
-            Rectangle badgeRect = new(x + 3, y + 2, 42, 18);
+            int badgeW = badge.Length <= 2 ? 28 : 36;
+            Rectangle badgeRect = new(x + 3, y + 2, badgeW, 18);
+            Color badgeBg = isHovered
+                ? FDPalette.AccentOrange
+                : (isBound ? FDPalette.AccentCyan : Color.FromArgb(40, 48, 60));
+
             using (GraphicsPath bPath = ThemeModule.GetResponsiveRoundedPath(badgeRect, 3))
-            using (SolidBrush bBrush = new(isBound ? FDPalette.AccentCyan : Color.FromArgb(40, 48, 60)))
+            using (SolidBrush bBrush = new(badgeBg))
             {
                 g.FillPath(bBrush, bPath);
             }
 
-            using Font badgeFont = new("Segoe UI", 7.5f, FontStyle.Bold);
-            TextRenderer.DrawText(g, badge, badgeFont, badgeRect, isBound ? Color.FromArgb(12, 16, 22) : FDPalette.TextSecondary,
+            using Font badgeFont = new("Segoe UI", 7.25f, FontStyle.Bold);
+            TextRenderer.DrawText(g, badge, badgeFont, badgeRect,
+                (isBound || isHovered) ? Color.FromArgb(12, 16, 22) : FDPalette.TextSecondary,
                 TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
 
-            string displayStr = isBound ? actionText : "Default / Unchanged";
-            int maxTextW = width - 50;
-            Rectangle textRect = new(x + 48, y, maxTextW, 22);
+            string displayStr = isBound ? actionText : "Unbound";
+            int textX = x + badgeW + 6;
+            int maxTextW = Math.Max(10, width - badgeW - 8);
+            Rectangle textRect = new(textX, y, maxTextW, 22);
 
-            float fontSize = 8.25f;
+            float fontSize = 8.0f;
             FontStyle style = isBound ? FontStyle.Bold : FontStyle.Regular;
             Font actionFont = new("Segoe UI", fontSize, style);
 
-            while (TextRenderer.MeasureText(g, displayStr, actionFont).Width > maxTextW && fontSize > 6.5f)
+            while (TextRenderer.MeasureText(g, displayStr, actionFont).Width > maxTextW && fontSize > 6.25f)
             {
                 fontSize -= 0.25f;
                 actionFont.Dispose();
                 actionFont = new("Segoe UI", fontSize, style);
             }
 
-            TextRenderer.DrawText(g, displayStr, actionFont, textRect,
-                isBound ? FDPalette.TextPrimary : FDPalette.TextMuted,
-                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine);
+            Color textCol = isHovered
+                ? Color.White
+                : (isBound ? FDPalette.TextPrimary : FDPalette.TextMuted);
+
+            TextRenderer.DrawText(g, displayStr, actionFont, textRect, textCol,
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis);
 
             actionFont.Dispose();
         }
@@ -782,16 +1237,6 @@ namespace FlightDeck_BF6_Flight_Configurator.GUI
                     parts.Add(v);
             }
             return parts.Count > 0 ? string.Join(" + ", parts) : "Unbound";
-        }
-
-        private static string CombineButtons(Dictionary<string, string> map, string k1, string k2, string lbl1, string lbl2)
-        {
-            bool has1 = map.TryGetValue(k1, out string? v1);
-            bool has2 = map.TryGetValue(k2, out string? v2);
-            if (has1 && has2) return $"{lbl1}: {v1}  |  {lbl2}: {v2}";
-            if (has1) return $"{lbl1}: {v1}";
-            if (has2) return $"{lbl2}: {v2}";
-            return "Unbound";
         }
     }
 
@@ -1587,6 +2032,7 @@ namespace FlightDeck_BF6_Flight_Configurator.GUI
                 }
                 catch (Exception ex)
                 {
+                    ExceptionHandler.LogError(ex);
                     MessageBox.Show($"Could not open link: {ex.Message}", "FlightDeck", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
             }
@@ -1638,6 +2084,298 @@ namespace FlightDeck_BF6_Flight_Configurator.GUI
             {
                 Color arrowColor = _isHovered ? FDPalette.AccentCyan : FDPalette.TextSecondary;
                 TextRenderer.DrawText(g, "↗", arrowFont, new Point(Width - 24, (Height - arrowFont.Height) / 2), arrowColor);
+            }
+        }
+    }
+
+    public class FDPatchNotesBox : Control
+    {
+        private string _title = "PATCH NOTES / CHANGELOG";
+        [Category("Appearance FlightDeck")]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
+        public string Title
+        {
+            get => _title;
+            set { _title = value; Invalidate(); }
+        }
+
+        private Color _accentColor = FDPalette.AccentCyan;
+        [Category("Appearance FlightDeck")]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
+        public Color AccentColor
+        {
+            get => _accentColor;
+            set { _accentColor = value; Invalidate(); }
+        }
+
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
+        public override string Text
+        {
+            get => base.Text;
+            set
+            {
+                base.Text = value;
+                _scrollOffset = 0;
+                Invalidate();
+            }
+        }
+
+        private int _scrollOffset;
+        private int _maxScroll;
+        private bool _isDraggingThumb;
+        private int _dragStartY;
+        private int _dragStartScroll;
+        private Rectangle _thumbRect;
+        private Rectangle _trackRect;
+        private bool _hoverThumb;
+
+        public FDPatchNotesBox()
+        {
+            SetStyle(ControlStyles.AllPaintingInWmPaint |
+                     ControlStyles.UserPaint |
+                     ControlStyles.ResizeRedraw |
+                     ControlStyles.OptimizedDoubleBuffer |
+                     ControlStyles.SupportsTransparentBackColor, true);
+            SetStyle(ControlStyles.Selectable, true);
+
+            BackColor = Color.Transparent;
+            ForeColor = FDPalette.TextPrimary;
+            Font = new Font("Segoe UI", 9.25f, FontStyle.Regular);
+            Size = new Size(448, 120);
+        }
+
+        protected override void OnMouseEnter(EventArgs e)
+        {
+            base.OnMouseEnter(e);
+            Focus();
+        }
+
+        protected override void OnMouseWheel(MouseEventArgs e)
+        {
+            base.OnMouseWheel(e);
+            if (_maxScroll <= 0) return;
+
+            int delta = e.Delta > 0 ? -24 : 24;
+            _scrollOffset = Math.Clamp(_scrollOffset + delta, 0, _maxScroll);
+            Invalidate();
+        }
+
+        protected override void OnMouseDown(MouseEventArgs e)
+        {
+            base.OnMouseDown(e);
+            Focus();
+
+            if (e.Button == MouseButtons.Left && _maxScroll > 0)
+            {
+                if (_thumbRect.Contains(e.Location))
+                {
+                    _isDraggingThumb = true;
+                    _dragStartY = e.Y;
+                    _dragStartScroll = _scrollOffset;
+                    Invalidate();
+                }
+                else if (_trackRect.Contains(e.Location))
+                {
+                    float ratio = (e.Y - _trackRect.Y) / (float)Math.Max(1, _trackRect.Height);
+                    _scrollOffset = Math.Clamp((int)(ratio * _maxScroll), 0, _maxScroll);
+                    Invalidate();
+                }
+            }
+        }
+
+        protected override void OnMouseMove(MouseEventArgs e)
+        {
+            base.OnMouseMove(e);
+
+            if (_isDraggingThumb && _maxScroll > 0)
+            {
+                int trackScrollable = Math.Max(1, _trackRect.Height - _thumbRect.Height);
+                int dy = e.Y - _dragStartY;
+                int scrollDelta = (int)Math.Round((dy / (double)trackScrollable) * _maxScroll);
+                _scrollOffset = Math.Clamp(_dragStartScroll + scrollDelta, 0, _maxScroll);
+                Invalidate();
+                return;
+            }
+
+            bool overThumb = _maxScroll > 0 && _thumbRect.Contains(e.Location);
+            if (overThumb != _hoverThumb)
+            {
+                _hoverThumb = overThumb;
+                Cursor = overThumb ? Cursors.Hand : Cursors.Default;
+                Invalidate();
+            }
+        }
+
+        protected override void OnMouseUp(MouseEventArgs e)
+        {
+            base.OnMouseUp(e);
+            if (_isDraggingThumb)
+            {
+                _isDraggingThumb = false;
+                Invalidate();
+            }
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            if (Width <= 10 || Height <= 10) return;
+
+            Graphics g = e.Graphics;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
+
+            Rectangle outerRect = new(0, 0, Width - 1, Height - 1);
+            using GraphicsPath outerPath = ThemeModule.GetResponsiveRoundedPath(outerRect, 6);
+            using (SolidBrush bgBrush = new(FDPalette.SurfaceInput))
+            {
+                g.FillPath(bgBrush, outerPath);
+            }
+
+            int headerH = string.IsNullOrWhiteSpace(_title) ? 0 : 25;
+            Rectangle viewport = new(2, headerH + 2, Width - 16, Height - headerH - 4);
+            if (viewport.Width <= 10 || viewport.Height <= 10) return;
+
+            string rawText = string.IsNullOrWhiteSpace(Text)
+                ? "- A new version of Flight Deck is ready to download on NexusMods."
+                : Text;
+
+            string[] lines = rawText.Replace("\r\n", "\n").Split('\n');
+
+            using Font regularFont = new(Font.FontFamily, Font.Size, FontStyle.Regular);
+            using Font boldFont = new(Font.FontFamily, Font.Size, FontStyle.Bold);
+            using StringFormat sf = new(StringFormatFlags.LineLimit)
+            {
+                Trimming = StringTrimming.Word
+            };
+
+            int padX = 10;
+            int textMaxW = Math.Max(20, Width - 28);
+            int totalContentHeight = 6;
+
+            var parsedLines = new List<(string Text, bool IsBullet, bool IsHeader, int Height, int AvailW)>(lines.Length);
+
+            foreach (string rawLine in lines)
+            {
+                string line = rawLine.Trim();
+                if (string.IsNullOrEmpty(line))
+                {
+                    parsedLines.Add((string.Empty, false, false, 8, textMaxW));
+                    totalContentHeight += 8;
+                    continue;
+                }
+
+                bool isBullet = line.StartsWith("- ") || line.StartsWith("* ") || line.StartsWith("• ");
+                bool isHeader = !isBullet && (line.StartsWith('#') || line.EndsWith(':') || (line.StartsWith('[') && line.EndsWith(']')));
+
+                string cleanText = isBullet ? line[2..].Trim() : line.TrimStart('#', ' ');
+                int availW = isBullet ? Math.Max(20, textMaxW - 16) : textMaxW;
+                Font measureFont = isHeader ? boldFont : regularFont;
+
+                SizeF measured = g.MeasureString(cleanText, measureFont, availW);
+                int rowH = Math.Max(18, (int)Math.Ceiling(measured.Height) + 2);
+
+                parsedLines.Add((cleanText, isBullet, isHeader, rowH, availW));
+                totalContentHeight += rowH + 6;
+            }
+
+            totalContentHeight += 6;
+            _maxScroll = Math.Max(0, totalContentHeight - viewport.Height);
+            _scrollOffset = Math.Clamp(_scrollOffset, 0, _maxScroll);
+
+            GraphicsState state = g.Save();
+            g.SetClip(viewport);
+
+            using SolidBrush primaryBrush = new(FDPalette.TextPrimary);
+            using SolidBrush secondaryBrush = new(FDPalette.TextSecondary);
+            using SolidBrush accentBrush = new(_accentColor);
+
+            int curY = viewport.Y + 6 - _scrollOffset;
+
+            foreach (var item in parsedLines)
+            {
+                if (string.IsNullOrEmpty(item.Text))
+                {
+                    curY += item.Height;
+                    continue;
+                }
+
+                if (curY + item.Height >= viewport.Top && curY <= viewport.Bottom)
+                {
+                    if (item.IsBullet)
+                    {
+                        g.FillEllipse(accentBrush, new Rectangle(padX + 2, curY + 6, 6, 6));
+                        RectangleF textBounds = new(padX + 16, curY, item.AvailW, item.Height + 4);
+                        g.DrawString(item.Text, regularFont, primaryBrush, textBounds);
+                    }
+                    else if (item.IsHeader)
+                    {
+                        RectangleF textBounds = new(padX, curY, item.AvailW, item.Height + 4);
+                        g.DrawString(item.Text, boldFont, accentBrush, textBounds);
+                    }
+                    else
+                    {
+                        RectangleF textBounds = new(padX, curY, item.AvailW, item.Height + 4);
+                        g.DrawString(item.Text, regularFont, secondaryBrush, textBounds);
+                    }
+                }
+
+                curY += item.Height + 6;
+            }
+
+            g.Restore(state);
+
+            if (headerH > 0)
+            {
+                GraphicsState hdrState = g.Save();
+                g.SetClip(outerPath);
+
+                Rectangle headerRect = new(0, 0, Width, headerH);
+                using (SolidBrush headerBg = new(Color.FromArgb(22, 27, 35)))
+                using (Pen linePen = new(FDPalette.BorderSubtle, 1f))
+                {
+                    g.FillRectangle(headerBg, headerRect);
+                    g.DrawLine(linePen, 1, headerH, Width - 2, headerH);
+                }
+
+                g.FillRectangle(accentBrush, new Rectangle(10, 6, 3, 13));
+
+                using Font headerFont = new("Segoe UI", 7.75f, FontStyle.Bold);
+                using StringFormat hdrSf = new() { LineAlignment = StringAlignment.Center };
+                g.DrawString(_title, headerFont, secondaryBrush, new RectangleF(18, 1, Width - 24, headerH), hdrSf);
+
+                g.Restore(hdrState);
+            }
+
+            using (Pen borderPen = new(FDPalette.BorderSubtle, 1f))
+            {
+                g.DrawPath(borderPen, outerPath);
+            }
+
+            if (_maxScroll > 0)
+            {
+                _trackRect = new Rectangle(Width - 10, headerH + 6, 5, Height - headerH - 12);
+                using (GraphicsPath trackPath = ThemeModule.GetResponsiveRoundedPath(_trackRect, 2))
+                using (SolidBrush trackBrush = new(Color.FromArgb(26, 32, 42)))
+                {
+                    g.FillPath(trackBrush, trackPath);
+                }
+
+                float viewRatio = (float)viewport.Height / Math.Max(1, totalContentHeight);
+                int thumbH = Math.Max(22, (int)(_trackRect.Height * viewRatio));
+                int maxThumbTravel = Math.Max(1, _trackRect.Height - thumbH);
+                int thumbY = _trackRect.Y + (int)((_scrollOffset / (float)_maxScroll) * maxThumbTravel);
+
+                _thumbRect = new Rectangle(_trackRect.X, thumbY, _trackRect.Width, thumbH);
+                Color thumbCol = (_isDraggingThumb || _hoverThumb) ? _accentColor : FDPalette.BorderSubtle;
+
+                using GraphicsPath thumbPath = ThemeModule.GetResponsiveRoundedPath(_thumbRect, 2);
+                using SolidBrush thumbBrush = new(thumbCol);
+                g.FillPath(thumbBrush, thumbPath);
+            }
+            else
+            {
+                _thumbRect = Rectangle.Empty;
+                _trackRect = Rectangle.Empty;
             }
         }
     }

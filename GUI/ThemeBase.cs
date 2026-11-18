@@ -13,14 +13,14 @@ using System.Windows.Forms;
 
 namespace FlightDeck_BF6_Flight_Configurator.GUI
 {
-    public abstract class ThemeContainer154 : ContainerControl
+    public abstract class VTSThemeContainer : ContainerControl
     {
         #region Initialization
 
         protected Graphics G = null!;
         protected Bitmap? B;
 
-        public ThemeContainer154()
+        public VTSThemeContainer()
         {
             SetStyle((ControlStyles)139270, true);
 
@@ -1729,7 +1729,7 @@ namespace FlightDeck_BF6_Flight_Configurator.GUI
         public void Dispose() => Delete();
     }
 
-    public class FDThemeContainer : ThemeContainer154
+    public class FDThemeContainer : VTSThemeContainer
     {
         private string _subHeader = "BF6 PROFSAVE_PROFILE FLIGHT CONFIGURATOR";
         [Category("Appearance FlightDeck")]

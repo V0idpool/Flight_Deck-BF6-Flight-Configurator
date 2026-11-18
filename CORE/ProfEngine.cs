@@ -54,7 +54,7 @@ namespace FlightDeck_BF6_Flight_Configurator.CORE
                 }
                 catch
                 {
-                    // Do nothing
+                    // Ignore inaccessible directories
                 }
             }
 
@@ -112,6 +112,39 @@ namespace FlightDeck_BF6_Flight_Configurator.CORE
             return new ProfileTuningSnapshot(invert, (StickLayoutType)stickIdx, heliSens, jetSens, deadzone);
         }
 
+        public static bool SyncLiveUserProfile(string profilePath, FlightScheme targetScheme)
+        {
+            var map = ReadMap(profilePath);
+            if (map.Count == 0) return false;
+
+            bool hasCustomHeli = map.TryGetValue("GstInput.Scheme5Buttons", out string? b5) && b5.Trim() == "4";
+            bool hasCustomJet = map.TryGetValue("GstInput.Scheme2Buttons", out string? b2) && b2.Trim() == "4";
+
+            if (hasCustomHeli)
+            {
+                foreach (var (k, v) in map)
+                {
+                    if (k.StartsWith("GstKeyBinding.helicopter.", StringComparison.Ordinal))
+                        targetScheme.RawVariables[k] = v;
+                }
+                targetScheme.HasCustomHeliBinds = true;
+                targetScheme.RawVariables["GstInput.Scheme5Buttons"] = "4";
+            }
+
+            if (hasCustomJet)
+            {
+                foreach (var (k, v) in map)
+                {
+                    if (k.StartsWith("GstKeyBinding.jet.", StringComparison.Ordinal))
+                        targetScheme.RawVariables[k] = v;
+                }
+                targetScheme.HasCustomJetBinds = true;
+                targetScheme.RawVariables["GstInput.Scheme2Buttons"] = "4";
+            }
+
+            return hasCustomHeli || hasCustomJet;
+        }
+
         public static PatchSummary ApplyScheme(string profilePath, FlightScheme scheme, bool lockReadOnly)
         {
             if (!File.Exists(profilePath))
@@ -136,11 +169,19 @@ namespace FlightDeck_BF6_Flight_Configurator.CORE
             string backupPath = $"{profilePath}.bak_{DateTime.Now:yyyyMMdd_HHmmss}";
             File.Copy(profilePath, backupPath, overwrite: true);
 
+            bool writeCustomHeliBinds = scheme.HasCustomHeliBinds ||
+                (scheme.RawVariables.TryGetValue("GstInput.Scheme5Buttons", out string? s5b) && s5b.Trim() == "4");
+            bool writeCustomJetBinds = scheme.HasCustomJetBinds ||
+                (scheme.RawVariables.TryGetValue("GstInput.Scheme2Buttons", out string? s2b) && s2b.Trim() == "4");
+
             List<string> lines = File.ReadAllLines(profilePath, Encoding.UTF8)
-                .Where(l => !l.StartsWith("GstKeyBinding.", StringComparison.Ordinal))
+                .Where(l => !l.StartsWith("GstKeyBinding.heli.", StringComparison.Ordinal) &&
+                            !l.StartsWith("GstKeyBinding.helicopter.", StringComparison.Ordinal) &&
+                            !l.StartsWith("GstKeyBinding.jet.", StringComparison.Ordinal) &&
+                            !l.StartsWith("GstKeyBinding.version ", StringComparison.Ordinal))
                 .ToList();
 
-            var handledKeys = new HashSet<string>(StringComparer.Ordinal);
+            var handledInputKeys = new HashSet<string>(StringComparer.Ordinal);
             int updatedCount = 0;
             int lastGstInputLineIndex = -1;
 
@@ -153,23 +194,24 @@ namespace FlightDeck_BF6_Flight_Configurator.CORE
                 string key = line[..spaceIdx];
 
                 if (key.StartsWith("GstInput.", StringComparison.Ordinal))
+                {
                     lastGstInputLineIndex = i;
 
-                if (key.StartsWith("GstInput.", StringComparison.Ordinal) &&
-                    scheme.RawVariables.TryGetValue(key, out string? targetValue))
-                {
-                    handledKeys.Add(key);
-                    string currentValue = line[(spaceIdx + 1)..];
-                    if (!string.Equals(currentValue, targetValue, StringComparison.Ordinal))
+                    if (scheme.RawVariables.TryGetValue(key, out string? targetValue))
                     {
-                        lines[i] = $"{key} {targetValue}";
-                        updatedCount++;
+                        handledInputKeys.Add(key);
+                        string currentValue = line[(spaceIdx + 1)..];
+                        if (!string.Equals(currentValue, targetValue, StringComparison.Ordinal))
+                        {
+                            lines[i] = $"{key} {targetValue}";
+                            updatedCount++;
+                        }
                     }
                 }
             }
 
             var missingInputs = scheme.RawVariables
-                .Where(kv => !handledKeys.Contains(kv.Key) && kv.Key.StartsWith("GstInput.", StringComparison.Ordinal))
+                .Where(kv => !handledInputKeys.Contains(kv.Key) && kv.Key.StartsWith("GstInput.", StringComparison.Ordinal))
                 .OrderBy(kv => kv.Key, StringComparer.Ordinal)
                 .Select(kv => $"{kv.Key} {kv.Value}")
                 .ToList();
@@ -180,6 +222,38 @@ namespace FlightDeck_BF6_Flight_Configurator.CORE
             {
                 int insertPos = lastGstInputLineIndex >= 0 ? lastGstInputLineIndex + 1 : lines.Count;
                 lines.InsertRange(insertPos, missingInputs);
+            }
+
+            var keyBindLinesToInsert = new List<string>();
+
+            if (writeCustomHeliBinds)
+            {
+                keyBindLinesToInsert.AddRange(
+                    scheme.RawVariables
+                        .Where(kv => kv.Key.StartsWith("GstKeyBinding.helicopter.", StringComparison.Ordinal))
+                        .OrderBy(kv => kv.Key, StringComparer.Ordinal)
+                        .Select(kv => $"{kv.Key} {kv.Value}"));
+            }
+
+            if (writeCustomJetBinds)
+            {
+                keyBindLinesToInsert.AddRange(
+                    scheme.RawVariables
+                        .Where(kv => kv.Key.StartsWith("GstKeyBinding.jet.", StringComparison.Ordinal))
+                        .OrderBy(kv => kv.Key, StringComparer.Ordinal)
+                        .Select(kv => $"{kv.Key} {kv.Value}"));
+            }
+
+            bool fileHasOtherKeyBinds = lines.Any(l => l.StartsWith("GstKeyBinding.", StringComparison.Ordinal));
+            if (keyBindLinesToInsert.Count > 0 || fileHasOtherKeyBinds)
+            {
+                keyBindLinesToInsert.Add("GstKeyBinding.version 2000007");
+
+                int bindInsertIndex = lines.FindIndex(l => l.StartsWith("GstInput.", StringComparison.Ordinal));
+                if (bindInsertIndex < 0) bindInsertIndex = lines.Count;
+
+                lines.InsertRange(bindInsertIndex, keyBindLinesToInsert);
+                injectedCount += keyBindLinesToInsert.Count;
             }
 
             using (var writer = new StreamWriter(profilePath, append: false, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false)))
@@ -209,6 +283,8 @@ namespace FlightDeck_BF6_Flight_Configurator.CORE
                 sb.AppendLine("[Metadata]");
                 sb.AppendLine($"Title={scheme.Title}");
                 sb.AppendLine($"Subtitle={scheme.Subtitle}");
+                sb.AppendLine($"HasCustomHeliBinds={scheme.HasCustomHeliBinds}");
+                sb.AppendLine($"HasCustomJetBinds={scheme.HasCustomJetBinds}");
                 sb.AppendLine();
                 sb.AppendLine("[Variables]");
                 foreach (var (k, v) in scheme.RawVariables.OrderBy(x => x.Key, StringComparer.Ordinal))
@@ -224,6 +300,8 @@ namespace FlightDeck_BF6_Flight_Configurator.CORE
                 writer.WriteStartObject();
                 writer.WriteString("Title", scheme.Title);
                 writer.WriteString("Subtitle", scheme.Subtitle);
+                writer.WriteBoolean("HasCustomHeliBinds", scheme.HasCustomHeliBinds);
+                writer.WriteBoolean("HasCustomJetBinds", scheme.HasCustomJetBinds);
 
                 writer.WriteStartObject("RawVariables");
                 foreach (var (k, v) in scheme.RawVariables.OrderBy(x => x.Key, StringComparer.Ordinal))
@@ -239,8 +317,10 @@ namespace FlightDeck_BF6_Flight_Configurator.CORE
             var scheme = new FlightScheme
             {
                 Title = Path.GetFileNameWithoutExtension(filePath),
-                Subtitle = $"Imported from {Path.GetFileName(filePath)}"
-            };
+                Subtitle = $"Custom Preset ({Path.GetFileName(filePath)})",
+                SourceFilePath = filePath,
+                IsCustom = true
+            }.EnsureBaselineTables();
 
             if (filePath.EndsWith(".ini", StringComparison.OrdinalIgnoreCase))
             {
@@ -260,10 +340,15 @@ namespace FlightDeck_BF6_Flight_Configurator.CORE
                         scheme.Title = v;
                     else if (k.Equals("Subtitle", StringComparison.OrdinalIgnoreCase))
                         scheme.Subtitle = v;
-                    else
+                    else if (k.Equals("HasCustomHeliBinds", StringComparison.OrdinalIgnoreCase) && bool.TryParse(v, out bool ch))
+                        scheme.HasCustomHeliBinds = ch;
+                    else if (k.Equals("HasCustomJetBinds", StringComparison.OrdinalIgnoreCase) && bool.TryParse(v, out bool cj))
+                        scheme.HasCustomJetBinds = cj;
+                    else if (k.Equals("HasCustomButtonBinds", StringComparison.OrdinalIgnoreCase) && bool.TryParse(v, out bool cb))
+                        scheme.HasCustomButtonBinds = cb;
+                    else if (!k.StartsWith("GstKeyBinding.heli.", StringComparison.Ordinal))
                         scheme.RawVariables[k] = v;
                 }
-                return scheme;
             }
             else
             {
@@ -277,14 +362,44 @@ namespace FlightDeck_BF6_Flight_Configurator.CORE
                 if (root.TryGetProperty("Subtitle", out JsonElement sProp) && sProp.GetString() is string s)
                     scheme.Subtitle = s;
 
+                if (root.TryGetProperty("HasCustomHeliBinds", out JsonElement chProp) &&
+                    (chProp.ValueKind == JsonValueKind.True || chProp.ValueKind == JsonValueKind.False))
+                {
+                    scheme.HasCustomHeliBinds = chProp.GetBoolean();
+                }
+
+                if (root.TryGetProperty("HasCustomJetBinds", out JsonElement cjProp) &&
+                    (cjProp.ValueKind == JsonValueKind.True || cjProp.ValueKind == JsonValueKind.False))
+                {
+                    scheme.HasCustomJetBinds = cjProp.GetBoolean();
+                }
+
                 if (root.TryGetProperty("RawVariables", out JsonElement varsProp) && varsProp.ValueKind == JsonValueKind.Object)
                 {
                     foreach (JsonProperty prop in varsProp.EnumerateObject())
-                        scheme.RawVariables[prop.Name] = prop.Value.GetString() ?? string.Empty;
+                    {
+                        if (!prop.Name.StartsWith("GstKeyBinding.heli.", StringComparison.Ordinal))
+                            scheme.RawVariables[prop.Name] = prop.Value.GetString() ?? string.Empty;
+                    }
                 }
-
-                return scheme;
             }
+
+            if (scheme.RawVariables.TryGetValue("GstInput.Scheme5Buttons", out string? b5) && b5.Trim() == "4")
+                scheme.HasCustomHeliBinds = true;
+            if (scheme.RawVariables.TryGetValue("GstInput.Scheme2Buttons", out string? b2) && b2.Trim() == "4")
+                scheme.HasCustomJetBinds = true;
+
+            scheme.RawVariables["GstKeyBinding.version"] = "2000007";
+
+            int stickIdx = 0;
+            if (scheme.RawVariables.TryGetValue("GstInput.Scheme5Sticks", out string? sSticks) && int.TryParse(sSticks.Trim(), out int parsedStick))
+                stickIdx = Math.Clamp(parsedStick, 0, 3);
+
+            bool invert = !scheme.RawVariables.TryGetValue("GstInput.Scheme5FlipY", out string? sFlip) || sFlip.Trim() == "1";
+            bool triggersAreThrottle = !scheme.RawVariables.TryGetValue("GstInput.Scheme5Buttons", out string? btnMode) || btnMode.Trim() != "0";
+            FlightSchemeRegistry.ApplyStickAxes(scheme, (StickLayoutType)stickIdx, triggersAreThrottle, invert);
+
+            return scheme;
         }
 
         private static Dictionary<string, string> ReadMap(string path)

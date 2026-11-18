@@ -28,6 +28,7 @@ namespace FlightDeck_BF6_Flight_Configurator
         private FDCheckBox _chkInvertPitch = null!;
         private FDModernButton _btnImportPreset = null!;
         private FDModernButton _btnExportPreset = null!;
+        private FDModernButton _btnDeletePreset = null!;
 
         private FDCheckBox _chkOverrideTuning = null!;
         private Label _lblHeliSens = null!;
@@ -42,11 +43,11 @@ namespace FlightDeck_BF6_Flight_Configurator
         private FDGroupBox _grpInspector = null!;
         private FDModernButton _btnToggleVisual = null!;
         private Panel _pnlInspectorBody = null!;
+        private FDControllerVisualizer _padVisualizer = null!;
         private ListView _lvBindings = null!;
         private ColumnHeader _colKey = null!;
         private ColumnHeader _colVal = null!;
         private ColumnHeader _colCat = null!;
-        private FDControllerVisualizer _padVisualizer = null!;
         private FDGroupBox _grpBackups = null!;
         private FlowLayoutPanel _pnlBackupActions = null!;
         private FDModernButton _btnRestoreLatest = null!;
@@ -97,16 +98,21 @@ namespace FlightDeck_BF6_Flight_Configurator
             _chkInvertPitch = new FDCheckBox();
             _btnImportPreset = new FDModernButton();
             _btnExportPreset = new FDModernButton();
+            _btnDeletePreset = new FDModernButton();
             _chkOverrideTuning = new FDCheckBox();
             _lblHeliSens = new Label();
+            _sldHeliSens = new FDSlider();
             _numHeliSens = new NumericUpDown();
             _lblJetSens = new Label();
+            _sldJetSens = new FDSlider();
             _numJetSens = new NumericUpDown();
             _lblDeadzone = new Label();
+            _sldDeadzone = new FDSlider();
             _numDeadzone = new NumericUpDown();
             _grpInspector = new FDGroupBox();
             _btnToggleVisual = new FDModernButton();
             _pnlInspectorBody = new Panel();
+            _padVisualizer = new FDControllerVisualizer();
             _lvBindings = new ListView();
             _colKey = new ColumnHeader();
             _colVal = new ColumnHeader();
@@ -117,6 +123,7 @@ namespace FlightDeck_BF6_Flight_Configurator
             _btnSelectBackup = new FDModernButton();
             _btnOpenFolder = new FDModernButton();
             _chkReadOnly = new FDCheckBox();
+            _chkCheckUpdates = new FDCheckBox();
             _pnlApplySection = new Panel();
             _btnApply = new FDLaunchButton();
             _txtLog = new FDTextBox();
@@ -161,7 +168,7 @@ namespace FlightDeck_BF6_Flight_Configurator
             _themeShell.NoRounding = false;
             _themeShell.Padding = new Padding(12, 46, 12, 12);
             _themeShell.Sizable = true;
-            _themeShell.Size = new Size(920, 810);
+            _themeShell.Size = new Size(940, 810);
             _themeShell.SmartBounds = true;
             _themeShell.StartPosition = FormStartPosition.CenterScreen;
             _themeShell.SubHeader = "|   BF6 Flight Configurator";
@@ -181,7 +188,7 @@ namespace FlightDeck_BF6_Flight_Configurator
             _btnClose.ForeColor = Color.FromArgb(240, 244, 248);
             _btnClose.Icon = null;
             _btnClose.IsPrimaryAction = false;
-            _btnClose.Location = new Point(874, 6);
+            _btnClose.Location = new Point(894, 6);
             _btnClose.Name = "_btnClose";
             _btnClose.ShowAccentBar = false;
             _btnClose.ShowIconBox = true;
@@ -201,7 +208,7 @@ namespace FlightDeck_BF6_Flight_Configurator
             _btnMin.ForeColor = Color.FromArgb(240, 244, 248);
             _btnMin.Icon = null;
             _btnMin.IsPrimaryAction = false;
-            _btnMin.Location = new Point(836, 6);
+            _btnMin.Location = new Point(856, 6);
             _btnMin.Name = "_btnMin";
             _btnMin.ShowAccentBar = false;
             _btnMin.ShowIconBox = true;
@@ -227,14 +234,14 @@ namespace FlightDeck_BF6_Flight_Configurator
             _root.Name = "_root";
             _root.Padding = new Padding(4);
             _root.RowCount = 7;
-            _root.RowStyles.Add(new RowStyle(SizeType.Absolute, 92F));
+            _root.RowStyles.Add(new RowStyle(SizeType.Absolute, 100F));
             _root.RowStyles.Add(new RowStyle(SizeType.Absolute, 134F));
             _root.RowStyles.Add(new RowStyle(SizeType.Percent, 68F));
             _root.RowStyles.Add(new RowStyle(SizeType.Absolute, 96F));
             _root.RowStyles.Add(new RowStyle(SizeType.Absolute, 64F));
             _root.RowStyles.Add(new RowStyle(SizeType.Percent, 32F));
             _root.RowStyles.Add(new RowStyle(SizeType.Absolute, 28F));
-            _root.Size = new Size(896, 752);
+            _root.Size = new Size(916, 752);
             _root.TabIndex = 2;
             // 
             // _grpProfile
@@ -245,20 +252,22 @@ namespace FlightDeck_BF6_Flight_Configurator
             _grpProfile.Font = new Font("Segoe UI", 10F);
             _grpProfile.Location = new Point(7, 7);
             _grpProfile.Name = "_grpProfile";
-            _grpProfile.Padding = new Padding(12, 50, 12, 12);
-            _grpProfile.Size = new Size(882, 86);
+            _grpProfile.Padding = new Padding(12, 48, 12, 10);
+            _grpProfile.Size = new Size(902, 94);
             _grpProfile.SubTitle = "Select your PROFSAVEbf6mp_profile configuration file path";
             _grpProfile.TabIndex = 0;
             _grpProfile.Title = "1. BF6 Config Path";
             // 
             // _pnlProfileInner
             // 
+            _pnlProfileInner.BackColor = Color.FromArgb(20, 24, 31);
             _pnlProfileInner.Controls.Add(_cmbProfilePath);
             _pnlProfileInner.Controls.Add(_btnBrowse);
             _pnlProfileInner.Dock = DockStyle.Fill;
-            _pnlProfileInner.Location = new Point(12, 50);
+            _pnlProfileInner.Location = new Point(12, 48);
             _pnlProfileInner.Name = "_pnlProfileInner";
-            _pnlProfileInner.Size = new Size(858, 24);
+            _pnlProfileInner.Padding = new Padding(0, 1, 0, 3);
+            _pnlProfileInner.Size = new Size(878, 36);
             _pnlProfileInner.TabIndex = 0;
             // 
             // _cmbProfilePath
@@ -270,9 +279,9 @@ namespace FlightDeck_BF6_Flight_Configurator
             _cmbProfilePath.Font = new Font("Segoe UI", 9.75F);
             _cmbProfilePath.ForeColor = Color.FromArgb(240, 244, 248);
             _cmbProfilePath.ItemHeight = 24;
-            _cmbProfilePath.Location = new Point(0, 0);
+            _cmbProfilePath.Location = new Point(0, 1);
             _cmbProfilePath.Name = "_cmbProfilePath";
-            _cmbProfilePath.Size = new Size(748, 30);
+            _cmbProfilePath.Size = new Size(768, 30);
             _cmbProfilePath.TabIndex = 0;
             _cmbProfilePath.SelectedIndexChanged += CmbProfilePath_SelectedIndexChanged;
             // 
@@ -287,11 +296,11 @@ namespace FlightDeck_BF6_Flight_Configurator
             _btnBrowse.ForeColor = Color.FromArgb(240, 244, 248);
             _btnBrowse.Icon = null;
             _btnBrowse.IsPrimaryAction = false;
-            _btnBrowse.Location = new Point(748, 0);
+            _btnBrowse.Location = new Point(768, 1);
             _btnBrowse.Name = "_btnBrowse";
             _btnBrowse.ShowAccentBar = true;
             _btnBrowse.ShowIconBox = true;
-            _btnBrowse.Size = new Size(110, 24);
+            _btnBrowse.Size = new Size(110, 32);
             _btnBrowse.TabIndex = 1;
             _btnBrowse.Text = "Browse...";
             _btnBrowse.Click += BtnBrowse_Click;
@@ -302,17 +311,17 @@ namespace FlightDeck_BF6_Flight_Configurator
             _grpPreset.Controls.Add(_pnlPresetContent);
             _grpPreset.Dock = DockStyle.Fill;
             _grpPreset.Font = new Font("Segoe UI", 10F);
-            _grpPreset.Location = new Point(7, 99);
+            _grpPreset.Location = new Point(7, 107);
             _grpPreset.Name = "_grpPreset";
             _grpPreset.Padding = new Padding(12, 48, 12, 10);
-            _grpPreset.Size = new Size(882, 128);
+            _grpPreset.Size = new Size(902, 128);
             _grpPreset.SubTitle = "Mix & match button presets, stick layouts, pitch inversion, and sensitivity/deadzone overrides";
             _grpPreset.TabIndex = 1;
             _grpPreset.Title = "2. Flight Control Scheme & Stick Tuning";
             // 
             // _pnlPresetContent
             // 
-            _pnlPresetContent.BackColor = Color.Transparent;
+            _pnlPresetContent.BackColor = Color.FromArgb(20, 24, 31);
             _pnlPresetContent.Controls.Add(_lblPresetTag);
             _pnlPresetContent.Controls.Add(_cmbScheme);
             _pnlPresetContent.Controls.Add(_lblStickTag);
@@ -320,17 +329,21 @@ namespace FlightDeck_BF6_Flight_Configurator
             _pnlPresetContent.Controls.Add(_chkInvertPitch);
             _pnlPresetContent.Controls.Add(_btnImportPreset);
             _pnlPresetContent.Controls.Add(_btnExportPreset);
+            _pnlPresetContent.Controls.Add(_btnDeletePreset);
             _pnlPresetContent.Controls.Add(_chkOverrideTuning);
             _pnlPresetContent.Controls.Add(_lblHeliSens);
+            _pnlPresetContent.Controls.Add(_sldHeliSens);
             _pnlPresetContent.Controls.Add(_numHeliSens);
             _pnlPresetContent.Controls.Add(_lblJetSens);
+            _pnlPresetContent.Controls.Add(_sldJetSens);
             _pnlPresetContent.Controls.Add(_numJetSens);
             _pnlPresetContent.Controls.Add(_lblDeadzone);
+            _pnlPresetContent.Controls.Add(_sldDeadzone);
             _pnlPresetContent.Controls.Add(_numDeadzone);
             _pnlPresetContent.Dock = DockStyle.Fill;
             _pnlPresetContent.Location = new Point(12, 48);
             _pnlPresetContent.Name = "_pnlPresetContent";
-            _pnlPresetContent.Size = new Size(858, 70);
+            _pnlPresetContent.Size = new Size(878, 70);
             _pnlPresetContent.TabIndex = 0;
             // 
             // _lblPresetTag
@@ -354,7 +367,7 @@ namespace FlightDeck_BF6_Flight_Configurator
             _cmbScheme.ItemHeight = 22;
             _cmbScheme.Location = new Point(56, 1);
             _cmbScheme.Name = "_cmbScheme";
-            _cmbScheme.Size = new Size(185, 28);
+            _cmbScheme.Size = new Size(223, 28);
             _cmbScheme.TabIndex = 1;
             _cmbScheme.SelectedIndexChanged += CmbScheme_SelectedIndexChanged;
             // 
@@ -363,7 +376,7 @@ namespace FlightDeck_BF6_Flight_Configurator
             _lblStickTag.AutoSize = true;
             _lblStickTag.Font = new Font("Segoe UI", 8.75F, FontStyle.Bold);
             _lblStickTag.ForeColor = Color.FromArgb(148, 160, 176);
-            _lblStickTag.Location = new Point(252, 7);
+            _lblStickTag.Location = new Point(285, 7);
             _lblStickTag.Name = "_lblStickTag";
             _lblStickTag.Size = new Size(43, 15);
             _lblStickTag.TabIndex = 2;
@@ -377,20 +390,20 @@ namespace FlightDeck_BF6_Flight_Configurator
             _cmbSticks.Font = new Font("Segoe UI", 9.5F);
             _cmbSticks.ForeColor = Color.FromArgb(240, 244, 248);
             _cmbSticks.ItemHeight = 22;
-            _cmbSticks.Location = new Point(298, 1);
+            _cmbSticks.Location = new Point(331, 1);
             _cmbSticks.Name = "_cmbSticks";
-            _cmbSticks.Size = new Size(165, 28);
+            _cmbSticks.Size = new Size(145, 28);
             _cmbSticks.TabIndex = 3;
             _cmbSticks.SelectedIndexChanged += CmbSticks_SelectedIndexChanged;
             // 
             // _chkInvertPitch
             // 
-            _chkInvertPitch.BackColor = Color.Transparent;
+            _chkInvertPitch.BackColor = Color.FromArgb(20, 24, 31);
             _chkInvertPitch.Checked = true;
             _chkInvertPitch.Font = new Font("Segoe UI", 9.25F);
-            _chkInvertPitch.Location = new Point(476, 3);
+            _chkInvertPitch.Location = new Point(484, 3);
             _chkInvertPitch.Name = "_chkInvertPitch";
-            _chkInvertPitch.Size = new Size(118, 24);
+            _chkInvertPitch.Size = new Size(100, 24);
             _chkInvertPitch.TabIndex = 4;
             _chkInvertPitch.Text = "Invert Pitch";
             _chkInvertPitch.CheckedChanged += ChkInvertPitch_CheckedChanged;
@@ -406,11 +419,11 @@ namespace FlightDeck_BF6_Flight_Configurator
             _btnImportPreset.ForeColor = Color.FromArgb(240, 244, 248);
             _btnImportPreset.Icon = null;
             _btnImportPreset.IsPrimaryAction = false;
-            _btnImportPreset.Location = new Point(610, 1);
+            _btnImportPreset.Location = new Point(594, 1);
             _btnImportPreset.Name = "_btnImportPreset";
             _btnImportPreset.ShowAccentBar = true;
             _btnImportPreset.ShowIconBox = true;
-            _btnImportPreset.Size = new Size(120, 28);
+            _btnImportPreset.Size = new Size(102, 28);
             _btnImportPreset.TabIndex = 5;
             _btnImportPreset.Text = "Import Preset";
             _btnImportPreset.Click += BtnImportPreset_Click;
@@ -426,24 +439,45 @@ namespace FlightDeck_BF6_Flight_Configurator
             _btnExportPreset.ForeColor = Color.FromArgb(240, 244, 248);
             _btnExportPreset.Icon = null;
             _btnExportPreset.IsPrimaryAction = false;
-            _btnExportPreset.Location = new Point(738, 1);
+            _btnExportPreset.Location = new Point(702, 1);
             _btnExportPreset.Name = "_btnExportPreset";
             _btnExportPreset.ShowAccentBar = true;
             _btnExportPreset.ShowIconBox = true;
-            _btnExportPreset.Size = new Size(120, 28);
+            _btnExportPreset.Size = new Size(102, 28);
             _btnExportPreset.TabIndex = 6;
             _btnExportPreset.Text = "Export Preset";
             _btnExportPreset.Click += BtnExportPreset_Click;
             // 
+            // _btnDeletePreset
+            // 
+            _btnDeletePreset.AccentColor = Color.FromArgb(255, 102, 36);
+            _btnDeletePreset.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            _btnDeletePreset.BackColor = Color.Transparent;
+            _btnDeletePreset.CenterText = true;
+            _btnDeletePreset.CornerRadius = 6;
+            _btnDeletePreset.Enabled = false;
+            _btnDeletePreset.Font = new Font("Segoe UI", 8.5F, FontStyle.Bold);
+            _btnDeletePreset.ForeColor = Color.FromArgb(240, 244, 248);
+            _btnDeletePreset.Icon = null;
+            _btnDeletePreset.IsPrimaryAction = false;
+            _btnDeletePreset.Location = new Point(810, 1);
+            _btnDeletePreset.Name = "_btnDeletePreset";
+            _btnDeletePreset.ShowAccentBar = true;
+            _btnDeletePreset.ShowIconBox = true;
+            _btnDeletePreset.Size = new Size(68, 28);
+            _btnDeletePreset.TabIndex = 7;
+            _btnDeletePreset.Text = "Delete";
+            _btnDeletePreset.Click += BtnDeletePreset_Click;
+            // 
             // _chkOverrideTuning
             // 
-            _chkOverrideTuning.BackColor = Color.Transparent;
+            _chkOverrideTuning.BackColor = Color.FromArgb(20, 24, 31);
             _chkOverrideTuning.Checked = true;
             _chkOverrideTuning.Font = new Font("Segoe UI", 9F);
             _chkOverrideTuning.Location = new Point(0, 40);
             _chkOverrideTuning.Name = "_chkOverrideTuning";
             _chkOverrideTuning.Size = new Size(165, 24);
-            _chkOverrideTuning.TabIndex = 7;
+            _chkOverrideTuning.TabIndex = 8;
             _chkOverrideTuning.Text = "Tune Sens & Deadzone:";
             _chkOverrideTuning.CheckedChanged += ChkOverrideTuning_CheckedChanged;
             // 
@@ -455,8 +489,21 @@ namespace FlightDeck_BF6_Flight_Configurator
             _lblHeliSens.Location = new Point(170, 44);
             _lblHeliSens.Name = "_lblHeliSens";
             _lblHeliSens.Size = new Size(32, 15);
-            _lblHeliSens.TabIndex = 8;
+            _lblHeliSens.TabIndex = 9;
             _lblHeliSens.Text = "Heli:";
+            // 
+            // _sldHeliSens
+            // 
+            _sldHeliSens.AccentColor = Color.FromArgb(0, 180, 240);
+            _sldHeliSens.BackColor = Color.FromArgb(20, 24, 31);
+            _sldHeliSens.Location = new Point(206, 40);
+            _sldHeliSens.Maximum = new decimal(new int[] { 300, 0, 0, 131072 });
+            _sldHeliSens.Minimum = new decimal(new int[] { 10, 0, 0, 131072 });
+            _sldHeliSens.Name = "_sldHeliSens";
+            _sldHeliSens.Size = new Size(92, 23);
+            _sldHeliSens.TabIndex = 10;
+            _sldHeliSens.Value = new decimal(new int[] { 100, 0, 0, 131072 });
+            _sldHeliSens.ValueChanged += SldHeliSens_ValueChanged;
             // 
             // _numHeliSens
             // 
@@ -471,7 +518,7 @@ namespace FlightDeck_BF6_Flight_Configurator
             _numHeliSens.Minimum = new decimal(new int[] { 10, 0, 0, 131072 });
             _numHeliSens.Name = "_numHeliSens";
             _numHeliSens.Size = new Size(58, 23);
-            _numHeliSens.TabIndex = 10;
+            _numHeliSens.TabIndex = 11;
             _numHeliSens.Value = new decimal(new int[] { 100, 0, 0, 131072 });
             _numHeliSens.ValueChanged += NumHeliSens_ValueChanged;
             // 
@@ -483,8 +530,21 @@ namespace FlightDeck_BF6_Flight_Configurator
             _lblJetSens.Location = new Point(372, 44);
             _lblJetSens.Name = "_lblJetSens";
             _lblJetSens.Size = new Size(27, 15);
-            _lblJetSens.TabIndex = 11;
+            _lblJetSens.TabIndex = 12;
             _lblJetSens.Text = "Jet:";
+            // 
+            // _sldJetSens
+            // 
+            _sldJetSens.AccentColor = Color.FromArgb(0, 180, 240);
+            _sldJetSens.BackColor = Color.FromArgb(20, 24, 31);
+            _sldJetSens.Location = new Point(402, 40);
+            _sldJetSens.Maximum = new decimal(new int[] { 300, 0, 0, 131072 });
+            _sldJetSens.Minimum = new decimal(new int[] { 10, 0, 0, 131072 });
+            _sldJetSens.Name = "_sldJetSens";
+            _sldJetSens.Size = new Size(92, 23);
+            _sldJetSens.TabIndex = 13;
+            _sldJetSens.Value = new decimal(new int[] { 100, 0, 0, 131072 });
+            _sldJetSens.ValueChanged += SldJetSens_ValueChanged;
             // 
             // _numJetSens
             // 
@@ -499,7 +559,7 @@ namespace FlightDeck_BF6_Flight_Configurator
             _numJetSens.Minimum = new decimal(new int[] { 10, 0, 0, 131072 });
             _numJetSens.Name = "_numJetSens";
             _numJetSens.Size = new Size(58, 23);
-            _numJetSens.TabIndex = 13;
+            _numJetSens.TabIndex = 14;
             _numJetSens.Value = new decimal(new int[] { 100, 0, 0, 131072 });
             _numJetSens.ValueChanged += NumJetSens_ValueChanged;
             // 
@@ -511,8 +571,21 @@ namespace FlightDeck_BF6_Flight_Configurator
             _lblDeadzone.Location = new Point(568, 44);
             _lblDeadzone.Name = "_lblDeadzone";
             _lblDeadzone.Size = new Size(66, 15);
-            _lblDeadzone.TabIndex = 14;
+            _lblDeadzone.TabIndex = 15;
             _lblDeadzone.Text = "Deadzone:";
+            // 
+            // _sldDeadzone
+            // 
+            _sldDeadzone.AccentColor = Color.FromArgb(255, 102, 36);
+            _sldDeadzone.BackColor = Color.FromArgb(20, 24, 31);
+            _sldDeadzone.Location = new Point(636, 40);
+            _sldDeadzone.Maximum = new decimal(new int[] { 50, 0, 0, 131072 });
+            _sldDeadzone.Minimum = new decimal(new int[] { 0, 0, 0, 0 });
+            _sldDeadzone.Name = "_sldDeadzone";
+            _sldDeadzone.Size = new Size(92, 23);
+            _sldDeadzone.TabIndex = 16;
+            _sldDeadzone.Value = new decimal(new int[] { 6, 0, 0, 131072 });
+            _sldDeadzone.ValueChanged += SldDeadzone_ValueChanged;
             // 
             // _numDeadzone
             // 
@@ -526,7 +599,7 @@ namespace FlightDeck_BF6_Flight_Configurator
             _numDeadzone.Maximum = new decimal(new int[] { 50, 0, 0, 131072 });
             _numDeadzone.Name = "_numDeadzone";
             _numDeadzone.Size = new Size(58, 23);
-            _numDeadzone.TabIndex = 16;
+            _numDeadzone.TabIndex = 17;
             _numDeadzone.Value = new decimal(new int[] { 6, 0, 0, 131072 });
             _numDeadzone.ValueChanged += NumDeadzone_ValueChanged;
             // 
@@ -537,17 +610,17 @@ namespace FlightDeck_BF6_Flight_Configurator
             _grpInspector.Controls.Add(_pnlInspectorBody);
             _grpInspector.Dock = DockStyle.Fill;
             _grpInspector.Font = new Font("Segoe UI", 10F);
-            _grpInspector.Location = new Point(7, 233);
+            _grpInspector.Location = new Point(7, 241);
             _grpInspector.Name = "_grpInspector";
             _grpInspector.Padding = new Padding(12, 50, 12, 12);
-            _grpInspector.Size = new Size(882, 218);
+            _grpInspector.Size = new Size(902, 212);
             _grpInspector.SubTitle = "Variables that will be updated or injected into PROFSAVEbf6mp_profile";
             _grpInspector.TabIndex = 2;
             _grpInspector.Title = "3. Keybind & Stick Axis Inspector";
             // 
             // _btnToggleVisual
             // 
-            _btnToggleVisual.AccentColor = Color.FromArgb(0, 180, 240);
+            _btnToggleVisual.AccentColor = Color.FromArgb(255, 102, 36);
             _btnToggleVisual.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             _btnToggleVisual.BackColor = Color.Transparent;
             _btnToggleVisual.CenterText = true;
@@ -556,23 +629,36 @@ namespace FlightDeck_BF6_Flight_Configurator
             _btnToggleVisual.ForeColor = Color.FromArgb(240, 244, 248);
             _btnToggleVisual.Icon = null;
             _btnToggleVisual.IsPrimaryAction = false;
-            _btnToggleVisual.Location = new Point(684, 11);
+            _btnToggleVisual.Location = new Point(704, 11);
             _btnToggleVisual.Name = "_btnToggleVisual";
             _btnToggleVisual.ShowAccentBar = true;
             _btnToggleVisual.ShowIconBox = true;
             _btnToggleVisual.Size = new Size(186, 28);
             _btnToggleVisual.TabIndex = 0;
-            _btnToggleVisual.Text = "Show Visual Controller";
+            _btnToggleVisual.Text = "Hide Visual Map (Table)";
             _btnToggleVisual.Click += BtnToggleVisual_Click;
             // 
             // _pnlInspectorBody
             // 
+            _pnlInspectorBody.BackColor = Color.FromArgb(20, 24, 31);
+            _pnlInspectorBody.Controls.Add(_padVisualizer);
             _pnlInspectorBody.Controls.Add(_lvBindings);
             _pnlInspectorBody.Dock = DockStyle.Fill;
             _pnlInspectorBody.Location = new Point(12, 50);
             _pnlInspectorBody.Name = "_pnlInspectorBody";
-            _pnlInspectorBody.Size = new Size(858, 156);
+            _pnlInspectorBody.Size = new Size(878, 150);
             _pnlInspectorBody.TabIndex = 1;
+            // 
+            // _padVisualizer
+            // 
+            _padVisualizer.ActiveVehicle = FDControllerVisualizer.VehicleMode.Helicopter;
+            _padVisualizer.BackColor = Color.Transparent;
+            _padVisualizer.ControllerStyle = FDControllerVisualizer.PadStyle.Xbox;
+            _padVisualizer.Dock = DockStyle.Fill;
+            _padVisualizer.Location = new Point(0, 0);
+            _padVisualizer.Name = "_padVisualizer";
+            _padVisualizer.Size = new Size(878, 150);
+            _padVisualizer.TabIndex = 1;
             // 
             // _lvBindings
             // 
@@ -585,10 +671,11 @@ namespace FlightDeck_BF6_Flight_Configurator
             _lvBindings.GridLines = true;
             _lvBindings.Location = new Point(0, 0);
             _lvBindings.Name = "_lvBindings";
-            _lvBindings.Size = new Size(858, 156);
+            _lvBindings.Size = new Size(878, 150);
             _lvBindings.TabIndex = 0;
             _lvBindings.UseCompatibleStateImageBehavior = false;
             _lvBindings.View = View.Details;
+            _lvBindings.Visible = false;
             // 
             // _colKey
             // 
@@ -611,25 +698,26 @@ namespace FlightDeck_BF6_Flight_Configurator
             _grpBackups.Controls.Add(_pnlBackupActions);
             _grpBackups.Dock = DockStyle.Fill;
             _grpBackups.Font = new Font("Segoe UI", 10F);
-            _grpBackups.Location = new Point(7, 457);
+            _grpBackups.Location = new Point(7, 459);
             _grpBackups.Name = "_grpBackups";
             _grpBackups.Padding = new Padding(12, 48, 12, 10);
-            _grpBackups.Size = new Size(882, 90);
+            _grpBackups.Size = new Size(902, 90);
             _grpBackups.SubTitle = "Roll back to a previous snapshot, open the settings folder, or lock the file Read-Only";
             _grpBackups.TabIndex = 3;
             _grpBackups.Title = "4. Profile Backups & File Management";
             // 
             // _pnlBackupActions
             // 
-            _pnlBackupActions.BackColor = Color.Transparent;
+            _pnlBackupActions.BackColor = Color.FromArgb(20, 24, 31);
             _pnlBackupActions.Controls.Add(_btnRestoreLatest);
             _pnlBackupActions.Controls.Add(_btnSelectBackup);
             _pnlBackupActions.Controls.Add(_btnOpenFolder);
             _pnlBackupActions.Controls.Add(_chkReadOnly);
+            _pnlBackupActions.Controls.Add(_chkCheckUpdates);
             _pnlBackupActions.Dock = DockStyle.Fill;
             _pnlBackupActions.Location = new Point(12, 48);
             _pnlBackupActions.Name = "_pnlBackupActions";
-            _pnlBackupActions.Size = new Size(858, 32);
+            _pnlBackupActions.Size = new Size(878, 32);
             _pnlBackupActions.TabIndex = 0;
             _pnlBackupActions.WrapContents = false;
             // 
@@ -695,7 +783,7 @@ namespace FlightDeck_BF6_Flight_Configurator
             // 
             // _chkReadOnly
             // 
-            _chkReadOnly.BackColor = Color.Transparent;
+            _chkReadOnly.BackColor = Color.FromArgb(20, 24, 31);
             _chkReadOnly.Checked = false;
             _chkReadOnly.Font = new Font("Segoe UI", 9.75F);
             _chkReadOnly.Location = new Point(531, 4);
@@ -705,15 +793,28 @@ namespace FlightDeck_BF6_Flight_Configurator
             _chkReadOnly.TabIndex = 3;
             _chkReadOnly.Text = "Lock Read-Only";
             // 
+            // _chkCheckUpdates
+            // 
+            _chkCheckUpdates.BackColor = Color.FromArgb(20, 24, 31);
+            _chkCheckUpdates.Checked = true;
+            _chkCheckUpdates.Font = new Font("Segoe UI", 9.5F);
+            _chkCheckUpdates.Location = new Point(699, 4);
+            _chkCheckUpdates.Margin = new Padding(8, 4, 0, 0);
+            _chkCheckUpdates.Name = "_chkCheckUpdates";
+            _chkCheckUpdates.Size = new Size(172, 26);
+            _chkCheckUpdates.TabIndex = 4;
+            _chkCheckUpdates.Text = "Check Updates on Start";
+            _chkCheckUpdates.CheckedChanged += ChkCheckUpdates_CheckedChanged;
+            // 
             // _pnlApplySection
             // 
             _pnlApplySection.BackColor = Color.Transparent;
             _pnlApplySection.Controls.Add(_btnApply);
             _pnlApplySection.Dock = DockStyle.Fill;
-            _pnlApplySection.Location = new Point(7, 553);
+            _pnlApplySection.Location = new Point(7, 555);
             _pnlApplySection.Name = "_pnlApplySection";
             _pnlApplySection.Padding = new Padding(0, 4, 0, 4);
-            _pnlApplySection.Size = new Size(882, 58);
+            _pnlApplySection.Size = new Size(902, 58);
             _pnlApplySection.TabIndex = 4;
             // 
             // _btnApply
@@ -727,7 +828,7 @@ namespace FlightDeck_BF6_Flight_Configurator
             _btnApply.Icon = null;
             _btnApply.Location = new Point(0, 4);
             _btnApply.Name = "_btnApply";
-            _btnApply.Size = new Size(882, 50);
+            _btnApply.Size = new Size(902, 50);
             _btnApply.SubText = "WRITE TO PROFSAVEbf6mp_profile";
             _btnApply.TabIndex = 0;
             _btnApply.Text = "APPLY FLIGHT DECK PROFILE";
@@ -738,12 +839,12 @@ namespace FlightDeck_BF6_Flight_Configurator
             _txtLog.BackColor = Color.Transparent;
             _txtLog.Dock = DockStyle.Fill;
             _txtLog.Font = new Font("Consolas", 9F);
-            _txtLog.Location = new Point(7, 617);
+            _txtLog.Location = new Point(7, 619);
             _txtLog.MaxLength = 32767;
             _txtLog.Multiline = true;
             _txtLog.Name = "_txtLog";
             _txtLog.ReadOnly = true;
-            _txtLog.Size = new Size(882, 99);
+            _txtLog.Size = new Size(902, 97);
             _txtLog.TabIndex = 5;
             _txtLog.TextAlign = HorizontalAlignment.Left;
             _txtLog.UseSystemPasswordChar = false;
@@ -757,7 +858,7 @@ namespace FlightDeck_BF6_Flight_Configurator
             _pnlFooter.Location = new Point(7, 722);
             _pnlFooter.Name = "_pnlFooter";
             _pnlFooter.Padding = new Padding(2, 0, 2, 0);
-            _pnlFooter.Size = new Size(882, 23);
+            _pnlFooter.Size = new Size(902, 23);
             _pnlFooter.TabIndex = 6;
             // 
             // _lblStudioBrand
@@ -779,7 +880,7 @@ namespace FlightDeck_BF6_Flight_Configurator
             _pnlFooterLinks.Controls.Add(_lnkWebsite);
             _pnlFooterLinks.Dock = DockStyle.Right;
             _pnlFooterLinks.FlowDirection = FlowDirection.RightToLeft;
-            _pnlFooterLinks.Location = new Point(480, 0);
+            _pnlFooterLinks.Location = new Point(500, 0);
             _pnlFooterLinks.Name = "_pnlFooterLinks";
             _pnlFooterLinks.Size = new Size(400, 23);
             _pnlFooterLinks.TabIndex = 1;
@@ -829,14 +930,15 @@ namespace FlightDeck_BF6_Flight_Configurator
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
             BackColor = Color.FromArgb(14, 17, 22);
-            ClientSize = new Size(920, 810);
+            ClientSize = new Size(940, 810);
             Controls.Add(_themeShell);
             FormBorderStyle = FormBorderStyle.None;
             Icon = (Icon)resources.GetObject("$this.Icon");
-            MinimumSize = new Size(860, 740);
+            MinimumSize = new Size(920, 740);
             Name = "MainForm";
             StartPosition = FormStartPosition.CenterScreen;
             Text = "FLIGHT DECK | BF6 FLIGHT CONFIGURATOR";
+            Load += MainForm_Load;
             _themeShell.ResumeLayout(false);
             _root.ResumeLayout(false);
             _grpProfile.ResumeLayout(false);
@@ -859,5 +961,7 @@ namespace FlightDeck_BF6_Flight_Configurator
         }
 
         #endregion
+
+        private FDCheckBox _chkCheckUpdates;
     }
 }

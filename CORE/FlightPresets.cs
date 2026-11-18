@@ -12,8 +12,7 @@ namespace FlightDeck_BF6_Flight_Configurator.CORE
             Bf4Veteran,
             Bf3Classic,
             Bf2042Alternate,
-            Bf6StockReset,
-            CustomImported
+            Bf6StockReset
         }
 
         public enum StickLayoutType
@@ -28,7 +27,25 @@ namespace FlightDeck_BF6_Flight_Configurator.CORE
         {
             public string Title { get; set; } = string.Empty;
             public string Subtitle { get; set; } = string.Empty;
+            public string? SourceFilePath { get; set; }
+            public bool IsCustom { get; set; }
+            public bool HasCustomHeliBinds { get; set; }
+            public bool HasCustomJetBinds { get; set; }
+
+            public bool HasCustomButtonBinds
+            {
+                get => HasCustomHeliBinds || HasCustomJetBinds;
+                set
+                {
+                    HasCustomHeliBinds = value;
+                    HasCustomJetBinds = value;
+                }
+            }
+
+            public FlightPresetType? BasePresetType { get; set; }
             public Dictionary<string, string> RawVariables { get; set; } = new(StringComparer.Ordinal);
+
+            public override string ToString() => Title;
 
             public FlightScheme AddGstInput(string key, string value)
             {
@@ -36,26 +53,63 @@ namespace FlightDeck_BF6_Flight_Configurator.CORE
                 return this;
             }
 
-            public FlightScheme BindHeli(string concept, PadBind bind, int controllerSlot = 0)
+            public FlightScheme EnsureBaselineTables()
             {
-                foreach (var kvp in bind.ToProfSaveLines("heli", concept, controllerSlot))
-                    RawVariables[kvp.Key] = kvp.Value;
+                foreach (var (k, v) in GetDefaultKeyBindingTable("helicopter"))
+                {
+                    if (!RawVariables.ContainsKey(k))
+                        RawVariables[k] = v;
+                }
+                foreach (var (k, v) in GetDefaultKeyBindingTable("jet"))
+                {
+                    if (!RawVariables.ContainsKey(k))
+                        RawVariables[k] = v;
+                }
+                RawVariables["GstKeyBinding.version"] = "2000007";
                 return this;
             }
 
-            public FlightScheme BindJet(string concept, PadBind bind, int controllerSlot = 0)
+            public FlightScheme BindAction(string domain, string actionKey, PadBind bind)
             {
-                foreach (var kvp in bind.ToProfSaveLines("jet", concept, controllerSlot))
-                    RawVariables[kvp.Key] = kvp.Value;
+                string normDomain = domain.Equals("heli", StringComparison.OrdinalIgnoreCase) ? "helicopter" : domain;
+                if (!ActionSlots.TryGetValue(actionKey, out var slots))
+                    return this;
+
+                foreach (var slot in slots)
+                {
+                    if (normDomain == "jet" && slot.Concept == "ConceptNextPosition")
+                        continue;
+                    if (normDomain == "helicopter" && slot.Concept == "ConceptSprint")
+                        continue;
+
+                    int neg = (slot.Concept == "ConceptBrake" || slot.Concept == "ConceptPitch") && !bind.IsStickAxis
+                        ? slot.DefaultNegate
+                        : bind.Negate;
+
+                    var actualBind = new PadBind(bind.Axis, bind.Button, neg, DeviceType.Controller);
+                    foreach (var kvp in actualBind.ToProfSaveLines(normDomain, slot.Concept, slot.SlotIndex))
+                        RawVariables[kvp.Key] = kvp.Value;
+                }
                 return this;
             }
+
+            public FlightScheme BindHeliAction(string actionKey, PadBind bind) =>
+                BindAction("helicopter", actionKey, bind);
+
+            public FlightScheme BindJetAction(string actionKey, PadBind bind) =>
+                BindAction("jet", actionKey, bind);
 
             public FlightScheme Clone()
             {
                 var copy = new FlightScheme
                 {
                     Title = Title,
-                    Subtitle = Subtitle
+                    Subtitle = Subtitle,
+                    SourceFilePath = SourceFilePath,
+                    IsCustom = IsCustom,
+                    HasCustomHeliBinds = HasCustomHeliBinds,
+                    HasCustomJetBinds = HasCustomJetBinds,
+                    BasePresetType = BasePresetType
                 };
                 foreach (var (k, v) in RawVariables)
                     copy.RawVariables[k] = v;
@@ -65,7 +119,7 @@ namespace FlightDeck_BF6_Flight_Configurator.CORE
 
         public static class FlightSchemeRegistry
         {
-            public static FlightScheme? CustomLoadedScheme { get; set; }
+            public static readonly List<FlightScheme> CustomSchemes = new();
 
             public static readonly IReadOnlyDictionary<FlightPresetType, FlightScheme> Schemes =
                 new Dictionary<FlightPresetType, FlightScheme>
@@ -77,7 +131,7 @@ namespace FlightDeck_BF6_Flight_Configurator.CORE
                 };
 
             public static FlightScheme BuildConfiguredScheme(
-                FlightPresetType presetType,
+                FlightScheme templateScheme,
                 StickLayoutType stickLayout,
                 bool invertPitch,
                 bool applyTuningOverrides,
@@ -85,11 +139,8 @@ namespace FlightDeck_BF6_Flight_Configurator.CORE
                 decimal jetSens,
                 decimal centerDeadzone)
             {
-                FlightScheme baseScheme = (presetType == FlightPresetType.CustomImported && CustomLoadedScheme is not null)
-                    ? CustomLoadedScheme.Clone()
-                    : Schemes.TryGetValue(presetType, out var found)
-                        ? found.Clone()
-                        : Schemes[FlightPresetType.Bf4Veteran].Clone();
+                FlightScheme baseScheme = templateScheme.Clone();
+                baseScheme.EnsureBaselineTables();
 
                 string flipVal = invertPitch ? "1" : "0";
                 baseScheme.AddGstInput("GstInput.Scheme2FlipY", flipVal)
@@ -102,8 +153,10 @@ namespace FlightDeck_BF6_Flight_Configurator.CORE
                 baseScheme.AddGstInput("GstInput.Scheme2Sticks", stickVal)
                           .AddGstInput("GstInput.Scheme5Sticks", stickVal);
 
-                bool triggersAreThrottle = presetType != FlightPresetType.Bf6StockReset;
-                ApplyStickAxes(baseScheme, stickLayout, triggersAreThrottle);
+                bool triggersAreThrottle = !baseScheme.RawVariables.TryGetValue("GstInput.Scheme5Buttons", out string? btnMode) ||
+                                           btnMode.Trim() != "0";
+
+                ApplyStickAxes(baseScheme, stickLayout, triggersAreThrottle, invertPitch);
 
                 if (applyTuningOverrides)
                 {
@@ -122,63 +175,107 @@ namespace FlightDeck_BF6_Flight_Configurator.CORE
                 return baseScheme;
             }
 
-            private static void ApplyStickAxes(FlightScheme scheme, StickLayoutType stickLayout, bool triggersAreThrottle)
+            public static void ApplyStickAxes(FlightScheme scheme, StickLayoutType stickLayout, bool triggersAreThrottle, bool invertPitch = true)
             {
-                (PadBind yaw, PadBind pitch, PadBind roll, PadBind throttleUp, PadBind throttleDown) = stickLayout switch
+                int pitchNeg = invertPitch ? 1 : 0;
+                PadBind lsPitch = new(1, 60, pitchNeg);
+                PadBind rsPitch = new(10, 60, pitchNeg);
+
+                (PadBind yaw, PadBind pitch, PadBind roll, PadBind throttleAxis) = stickLayout switch
                 {
                     StickLayoutType.Legacy => (
                         yaw: PadInput.RightStickX_Pos,
-                        pitch: PadInput.RightStickY_Pos,
+                        pitch: rsPitch,
                         roll: PadInput.LeftStickX_Pos,
-                        throttleUp: PadInput.LeftStickY_Pos,
-                        throttleDown: PadInput.LeftStickY_Neg
+                        throttleAxis: PadInput.LeftStickY_Pos
                     ),
                     StickLayoutType.Southpaw => (
                         yaw: PadInput.RightStickX_Pos,
-                        pitch: PadInput.LeftStickY_Pos,
+                        pitch: lsPitch,
                         roll: PadInput.LeftStickX_Pos,
-                        throttleUp: PadInput.RightStickY_Pos,
-                        throttleDown: PadInput.RightStickY_Neg
+                        throttleAxis: PadInput.RightStickY_Pos
                     ),
                     StickLayoutType.LegacySouthpaw => (
                         yaw: PadInput.LeftStickX_Pos,
-                        pitch: PadInput.LeftStickY_Pos,
+                        pitch: lsPitch,
                         roll: PadInput.RightStickX_Pos,
-                        throttleUp: PadInput.RightStickY_Pos,
-                        throttleDown: PadInput.RightStickY_Neg
+                        throttleAxis: PadInput.RightStickY_Pos
                     ),
                     _ => (
                         yaw: PadInput.LeftStickX_Pos,
-                        pitch: PadInput.RightStickY_Pos,
+                        pitch: rsPitch,
                         roll: PadInput.RightStickX_Pos,
-                        throttleUp: PadInput.LeftStickY_Pos,
-                        throttleDown: PadInput.LeftStickY_Neg
+                        throttleAxis: PadInput.LeftStickY_Pos
                     )
                 };
 
-                scheme.BindHeli("ConceptYaw", yaw)
-                      .BindHeli("ConceptPitch", pitch)
-                      .BindHeli("ConceptRoll", roll)
-                      .BindJet("ConceptYaw", yaw)
-                      .BindJet("ConceptPitch", pitch)
-                      .BindJet("ConceptRoll", roll);
+                scheme.BindHeliAction("Yaw", yaw)
+                      .BindHeliAction("Pitch", pitch)
+                      .BindHeliAction("Roll", roll)
+                      .BindJetAction("Yaw", yaw)
+                      .BindJetAction("Pitch", pitch)
+                      .BindJetAction("Roll", roll);
 
-                if (!triggersAreThrottle)
+                if (!scheme.HasCustomHeliBinds)
                 {
-                    scheme.BindHeli("ConceptMoveFB", throttleUp)
-                          .BindHeli("ConceptBrake", throttleDown)
-                          .BindJet("ConceptMoveFB", throttleUp)
-                          .BindJet("ConceptBrake", throttleDown);
+                    if (triggersAreThrottle)
+                    {
+                        scheme.BindHeliAction("Ascend", PadInput.RightTrigger_RT)
+                              .BindHeliAction("Descend", PadInput.LeftTrigger_LT)
+                              .BindHeliAction("ThrottleAxis", PadInput.Unbound);
+                    }
+                    else
+                    {
+                        scheme.BindHeliAction("ThrottleAxis", throttleAxis)
+                              .BindHeliAction("Ascend", PadInput.RightBumper_RB)
+                              .BindHeliAction("Descend", PadInput.LeftBumper_LB);
+                    }
                 }
+                else if (IsThrottleBoundToStick(scheme.RawVariables, "helicopter"))
+                {
+                    scheme.BindHeliAction("ThrottleAxis", throttleAxis);
+                }
+
+                if (!scheme.HasCustomJetBinds)
+                {
+                    if (triggersAreThrottle)
+                    {
+                        scheme.BindJetAction("Ascend", PadInput.RightTrigger_RT)
+                              .BindJetAction("Descend", PadInput.LeftTrigger_LT)
+                              .BindJetAction("ThrottleAxis", PadInput.Unbound);
+                    }
+                    else
+                    {
+                        scheme.BindJetAction("ThrottleAxis", throttleAxis)
+                              .BindJetAction("Ascend", PadInput.RightBumper_RB)
+                              .BindJetAction("Descend", PadInput.LeftBumper_LB);
+                    }
+                }
+                else if (IsThrottleBoundToStick(scheme.RawVariables, "jet"))
+                {
+                    scheme.BindJetAction("ThrottleAxis", throttleAxis);
+                }
+            }
+
+            private static bool IsThrottleBoundToStick(IReadOnlyDictionary<string, string> vars, string domain)
+            {
+                string axisKey = $"GstKeyBinding.{domain}.ConceptMoveFB.2.axis";
+                string btnKey = $"GstKeyBinding.{domain}.ConceptMoveFB.2.button";
+                return vars.TryGetValue(axisKey, out string? sAxis) &&
+                       vars.TryGetValue(btnKey, out string? sBtn) &&
+                       int.TryParse(sAxis, out int axis) &&
+                       int.TryParse(sBtn, out int btn) &&
+                       axis != 56 && btn == 60;
             }
 
             private static FlightScheme BuildBf4Veteran()
             {
                 var scheme = new FlightScheme
                 {
-                    Title = "Battlefield 4 — Veteran Flight",
-                    Subtitle = "RT/LT Collective & Throttle | LS Yaw | RS Pitch/Roll | RB Fire | LB Zoom/Flares | Zero Flight Assist"
-                };
+                    Title = "Battlefield 4 | Veteran Flight",
+                    Subtitle = "RT/LT Collective & Throttle | LS Yaw | RS Pitch/Roll | LB Fire | RB Countermeasures | Zero Flight Assist",
+                    BasePresetType = FlightPresetType.Bf4Veteran
+                }.EnsureBaselineTables();
 
                 scheme.AddGstInput("GstInput.OptionHelicopterAssist", "0")
                       .AddGstInput("GstInput.OptionPlaneAssist", "0")
@@ -209,34 +306,32 @@ namespace FlightDeck_BF6_Flight_Configurator.CORE
                       .AddGstInput("GstInput.Scheme4Sticks", "0")
                       .AddGstInput("GstInput.Scheme4FlipY", "0");
 
-                scheme.BindHeli("ConceptMoveFB", PadInput.RightTrigger_RT)
-                      .BindHeli("ConceptBrake", PadInput.LeftTrigger_LT)
-                      .BindHeli("ConceptCrawl", PadInput.LeftTrigger_LT)
-                      .BindHeli("ConceptYaw", PadInput.LeftStickX_Pos)
-                      .BindHeli("ConceptPitch", PadInput.RightStickY_Pos)
-                      .BindHeli("ConceptRoll", PadInput.RightStickX_Pos)
-                      .BindHeli("ConceptFire", PadInput.RightBumper_RB)
-                      .BindHeli("ConceptActivateCountermeasures", PadInput.LeftBumper_LB)
-                      .BindHeli("ConceptZoom", PadInput.RightStickClick)
-                      .BindHeli("ConceptFreeCamera", PadInput.DPadUp)
-                      .BindHeli("ConceptCameraSwitch", PadInput.LeftStickClick)
-                      .BindHeli("ConceptSelectInventoryItem1", PadInput.ButtonY_Tri)
-                      .BindHeli("ConceptReload", PadInput.ButtonX_Square)
-                      .BindHeli("ConceptExit", PadInput.ButtonX_Square)
-                      .BindHeli("ConceptSwitchToPrimaryWeapon", PadInput.ButtonA_Cross);
+                scheme.BindHeliAction("Ascend", PadInput.RightTrigger_RT)
+                      .BindHeliAction("Descend", PadInput.LeftTrigger_LT)
+                      .BindHeliAction("ThrottleAxis", PadInput.Unbound)
+                      .BindHeliAction("Fire", PadInput.LeftBumper_LB)
+                      .BindHeliAction("Countermeasures", PadInput.RightBumper_RB)
+                      .BindHeliAction("Zoom", PadInput.RightStickClick)
+                      .BindHeliAction("ChaseCam", PadInput.LeftStickClick)
+                      .BindHeliAction("Freelook", PadInput.DPadUp)
+                      .BindHeliAction("Ping", PadInput.DPadDown)
+                      .BindHeliAction("RepairGadget2", PadInput.DPadRight)
+                      .BindHeliAction("SwapWeapon", PadInput.ButtonY_Tri)
+                      .BindHeliAction("ReloadExit", PadInput.ButtonX_Square)
+                      .BindHeliAction("SwitchSeat", PadInput.ButtonA_Cross);
 
-                scheme.BindJet("ConceptMoveFB", PadInput.RightTrigger_RT)
-                      .BindJet("ConceptBrake", PadInput.LeftTrigger_LT)
-                      .BindJet("ConceptSprint", PadInput.LeftStickClick)
-                      .BindJet("ConceptYaw", PadInput.LeftStickX_Pos)
-                      .BindJet("ConceptPitch", PadInput.RightStickY_Pos)
-                      .BindJet("ConceptRoll", PadInput.RightStickX_Pos)
-                      .BindJet("ConceptFire", PadInput.RightBumper_RB)
-                      .BindJet("ConceptActivateCountermeasures", PadInput.LeftBumper_LB)
-                      .BindJet("ConceptZoom", PadInput.RightStickClick)
-                      .BindJet("ConceptFreeCamera", PadInput.DPadDown)
-                      .BindJet("ConceptCameraSwitch", PadInput.DPadUp)
-                      .BindJet("ConceptSelectInventoryItem1", PadInput.ButtonY_Tri);
+                scheme.BindJetAction("Ascend", PadInput.RightTrigger_RT)
+                      .BindJetAction("Descend", PadInput.LeftTrigger_LT)
+                      .BindJetAction("ThrottleAxis", PadInput.Unbound)
+                      .BindJetAction("Afterburner", PadInput.LeftStickClick)
+                      .BindJetAction("Fire", PadInput.LeftBumper_LB)
+                      .BindJetAction("Countermeasures", PadInput.RightBumper_RB)
+                      .BindJetAction("Zoom", PadInput.RightStickClick)
+                      .BindJetAction("Freelook", PadInput.DPadDown)
+                      .BindJetAction("ChaseCam", PadInput.DPadUp)
+                      .BindJetAction("RepairGadget2", PadInput.DPadRight)
+                      .BindJetAction("SwapWeapon", PadInput.ButtonY_Tri)
+                      .BindJetAction("ReloadExit", PadInput.ButtonX_Square);
 
                 return scheme;
             }
@@ -245,9 +340,10 @@ namespace FlightDeck_BF6_Flight_Configurator.CORE
             {
                 var scheme = new FlightScheme
                 {
-                    Title = "Battlefield 3 — Classic Alternate",
-                    Subtitle = "RT/LT Throttle | Bumpers Fire/Zoom | Linear 1:1 BF3 Stick Response | Zero Assist"
-                };
+                    Title = "Battlefield 3 | Classic Alternate",
+                    Subtitle = "RT/LT Throttle | LB Fire | RB Countermeasures | Linear 1:1 BF3 Stick Response | Zero Assist",
+                    BasePresetType = FlightPresetType.Bf3Classic
+                }.EnsureBaselineTables();
 
                 scheme.AddGstInput("GstInput.OptionHelicopterAssist", "0")
                       .AddGstInput("GstInput.OptionPlaneAssist", "0")
@@ -278,28 +374,29 @@ namespace FlightDeck_BF6_Flight_Configurator.CORE
                       .AddGstInput("GstInput.Scheme4Sticks", "0")
                       .AddGstInput("GstInput.Scheme4FlipY", "0");
 
-                scheme.BindHeli("ConceptMoveFB", PadInput.RightTrigger_RT)
-                      .BindHeli("ConceptBrake", PadInput.LeftTrigger_LT)
-                      .BindHeli("ConceptCrawl", PadInput.LeftTrigger_LT)
-                      .BindHeli("ConceptYaw", PadInput.LeftStickX_Pos)
-                      .BindHeli("ConceptPitch", PadInput.RightStickY_Pos)
-                      .BindHeli("ConceptRoll", PadInput.RightStickX_Pos)
-                      .BindHeli("ConceptFire", PadInput.LeftBumper_LB)
-                      .BindHeli("ConceptActivateCountermeasures", PadInput.RightStickClick)
-                      .BindHeli("ConceptZoom", PadInput.DPadUp)
-                      .BindHeli("ConceptCameraSwitch", PadInput.LeftStickClick)
-                      .BindHeli("ConceptSelectInventoryItem1", PadInput.ButtonY_Tri);
+                scheme.BindHeliAction("Ascend", PadInput.RightTrigger_RT)
+                      .BindHeliAction("Descend", PadInput.LeftTrigger_LT)
+                      .BindHeliAction("ThrottleAxis", PadInput.Unbound)
+                      .BindHeliAction("Fire", PadInput.LeftBumper_LB)
+                      .BindHeliAction("Countermeasures", PadInput.RightBumper_RB)
+                      .BindHeliAction("Zoom", PadInput.DPadUp)
+                      .BindHeliAction("Freelook", PadInput.DPadDown)
+                      .BindHeliAction("ChaseCam", PadInput.LeftStickClick)
+                      .BindHeliAction("SwapWeapon", PadInput.ButtonY_Tri)
+                      .BindHeliAction("ReloadExit", PadInput.ButtonX_Square)
+                      .BindHeliAction("SwitchSeat", PadInput.ButtonA_Cross);
 
-                scheme.BindJet("ConceptMoveFB", PadInput.RightTrigger_RT)
-                      .BindJet("ConceptBrake", PadInput.LeftTrigger_LT)
-                      .BindJet("ConceptSprint", PadInput.LeftStickClick)
-                      .BindJet("ConceptYaw", PadInput.LeftStickX_Pos)
-                      .BindJet("ConceptPitch", PadInput.RightStickY_Pos)
-                      .BindJet("ConceptRoll", PadInput.RightStickX_Pos)
-                      .BindJet("ConceptFire", PadInput.LeftBumper_LB)
-                      .BindJet("ConceptActivateCountermeasures", PadInput.RightStickClick)
-                      .BindJet("ConceptCameraSwitch", PadInput.DPadUp)
-                      .BindJet("ConceptSelectInventoryItem1", PadInput.ButtonY_Tri);
+                scheme.BindJetAction("Ascend", PadInput.RightTrigger_RT)
+                      .BindJetAction("Descend", PadInput.LeftTrigger_LT)
+                      .BindJetAction("ThrottleAxis", PadInput.Unbound)
+                      .BindJetAction("Afterburner", PadInput.LeftStickClick)
+                      .BindJetAction("Fire", PadInput.LeftBumper_LB)
+                      .BindJetAction("Countermeasures", PadInput.RightBumper_RB)
+                      .BindJetAction("Zoom", PadInput.RightStickClick)
+                      .BindJetAction("Freelook", PadInput.DPadDown)
+                      .BindJetAction("ChaseCam", PadInput.DPadUp)
+                      .BindJetAction("SwapWeapon", PadInput.ButtonY_Tri)
+                      .BindJetAction("ReloadExit", PadInput.ButtonX_Square);
 
                 return scheme;
             }
@@ -308,9 +405,10 @@ namespace FlightDeck_BF6_Flight_Configurator.CORE
             {
                 var scheme = new FlightScheme
                 {
-                    Title = "Battlefield 2042 - Alternate",
-                    Subtitle = "RT/LT Ascend & Descend | RB Fire | LB Zoom | D-Pad Left Flares | 2042 Curves"
-                };
+                    Title = "Battlefield 2042 | Alternate",
+                    Subtitle = "RT/LT Ascend & Descend | LB Fire | RB Zoom/Spot | D-Pad Left Flares | 2042 Curves",
+                    BasePresetType = FlightPresetType.Bf2042Alternate
+                }.EnsureBaselineTables();
 
                 scheme.AddGstInput("GstInput.OptionHelicopterAssist", "0")
                       .AddGstInput("GstInput.OptionPlaneAssist", "0")
@@ -341,27 +439,29 @@ namespace FlightDeck_BF6_Flight_Configurator.CORE
                       .AddGstInput("GstInput.Scheme4Sticks", "0")
                       .AddGstInput("GstInput.Scheme4FlipY", "0");
 
-                scheme.BindHeli("ConceptMoveFB", PadInput.RightTrigger_RT)
-                      .BindHeli("ConceptBrake", PadInput.LeftTrigger_LT)
-                      .BindHeli("ConceptCrawl", PadInput.LeftTrigger_LT)
-                      .BindHeli("ConceptYaw", PadInput.LeftStickX_Pos)
-                      .BindHeli("ConceptPitch", PadInput.RightStickY_Pos)
-                      .BindHeli("ConceptRoll", PadInput.RightStickX_Pos)
-                      .BindHeli("ConceptFire", PadInput.RightBumper_RB)
-                      .BindHeli("ConceptZoom", PadInput.LeftBumper_LB)
-                      .BindHeli("ConceptActivateCountermeasures", PadInput.DPadLeft)
-                      .BindHeli("ConceptCameraSwitch", PadInput.RightStickClick);
+                scheme.BindHeliAction("Ascend", PadInput.RightTrigger_RT)
+                      .BindHeliAction("Descend", PadInput.LeftTrigger_LT)
+                      .BindHeliAction("ThrottleAxis", PadInput.Unbound)
+                      .BindHeliAction("Fire", PadInput.LeftBumper_LB)
+                      .BindHeliAction("Zoom", PadInput.RightBumper_RB)
+                      .BindHeliAction("Countermeasures", PadInput.DPadLeft)
+                      .BindHeliAction("Freelook", PadInput.DPadUp)
+                      .BindHeliAction("ChaseCam", PadInput.RightStickClick)
+                      .BindHeliAction("SwapWeapon", PadInput.ButtonY_Tri)
+                      .BindHeliAction("ReloadExit", PadInput.ButtonX_Square)
+                      .BindHeliAction("SwitchSeat", PadInput.ButtonA_Cross);
 
-                scheme.BindJet("ConceptMoveFB", PadInput.RightTrigger_RT)
-                      .BindJet("ConceptBrake", PadInput.LeftTrigger_LT)
-                      .BindJet("ConceptSprint", PadInput.LeftStickClick)
-                      .BindJet("ConceptYaw", PadInput.LeftStickX_Pos)
-                      .BindJet("ConceptPitch", PadInput.RightStickY_Pos)
-                      .BindJet("ConceptRoll", PadInput.RightStickX_Pos)
-                      .BindJet("ConceptFire", PadInput.RightBumper_RB)
-                      .BindJet("ConceptZoom", PadInput.LeftBumper_LB)
-                      .BindJet("ConceptActivateCountermeasures", PadInput.DPadLeft)
-                      .BindJet("ConceptCameraSwitch", PadInput.RightStickClick);
+                scheme.BindJetAction("Ascend", PadInput.RightTrigger_RT)
+                      .BindJetAction("Descend", PadInput.LeftTrigger_LT)
+                      .BindJetAction("ThrottleAxis", PadInput.Unbound)
+                      .BindJetAction("Afterburner", PadInput.LeftStickClick)
+                      .BindJetAction("Fire", PadInput.LeftBumper_LB)
+                      .BindJetAction("Zoom", PadInput.RightBumper_RB)
+                      .BindJetAction("Countermeasures", PadInput.DPadLeft)
+                      .BindJetAction("Freelook", PadInput.DPadDown)
+                      .BindJetAction("ChaseCam", PadInput.RightStickClick)
+                      .BindJetAction("SwapWeapon", PadInput.ButtonY_Tri)
+                      .BindJetAction("ReloadExit", PadInput.ButtonX_Square);
 
                 return scheme;
             }
@@ -370,9 +470,10 @@ namespace FlightDeck_BF6_Flight_Configurator.CORE
             {
                 var scheme = new FlightScheme
                 {
-                    Title = "Battlefield 6 — Stock Default",
-                    Subtitle = "Restores stock Battlefield 6 flight settings and default controls"
-                };
+                    Title = "Battlefield 6 - Stock Default",
+                    Subtitle = "Restores stock Battlefield 6 flight settings and default controls",
+                    BasePresetType = FlightPresetType.Bf6StockReset
+                }.EnsureBaselineTables();
 
                 scheme.AddGstInput("GstInput.OptionHelicopterAssist", "1")
                       .AddGstInput("GstInput.OptionPlaneAssist", "0")
@@ -402,24 +503,6 @@ namespace FlightDeck_BF6_Flight_Configurator.CORE
                       .AddGstInput("GstInput.Scheme5Buttons", "0")
                       .AddGstInput("GstInput.Scheme5Sticks", "0")
                       .AddGstInput("GstInput.Scheme5FlipY", "1");
-
-                scheme.BindHeli("ConceptMoveFB", PadInput.LeftStickY_Pos)
-                      .BindHeli("ConceptBrake", PadInput.LeftStickY_Neg)
-                      .BindHeli("ConceptYaw", PadInput.LeftStickX_Pos)
-                      .BindHeli("ConceptPitch", PadInput.RightStickY_Pos)
-                      .BindHeli("ConceptRoll", PadInput.RightStickX_Pos)
-                      .BindHeli("ConceptFire", PadInput.RightTrigger_RT)
-                      .BindHeli("ConceptZoom", PadInput.LeftTrigger_LT)
-                      .BindHeli("ConceptActivateCountermeasures", PadInput.DPadLeft);
-
-                scheme.BindJet("ConceptMoveFB", PadInput.LeftStickY_Pos)
-                      .BindJet("ConceptBrake", PadInput.LeftStickY_Neg)
-                      .BindJet("ConceptYaw", PadInput.LeftStickX_Pos)
-                      .BindJet("ConceptPitch", PadInput.RightStickY_Pos)
-                      .BindJet("ConceptRoll", PadInput.RightStickX_Pos)
-                      .BindJet("ConceptFire", PadInput.RightTrigger_RT)
-                      .BindJet("ConceptZoom", PadInput.LeftTrigger_LT)
-                      .BindJet("ConceptActivateCountermeasures", PadInput.DPadLeft);
 
                 return scheme;
             }
