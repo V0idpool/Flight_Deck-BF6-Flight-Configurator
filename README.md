@@ -1,4 +1,4 @@
-# FLIGHT DECK — BF6 Flight Configurator
+# FLIGHT DECK | BF6 Flight Configurator
 
 <p align="center">
   <img width="512" height="512" alt="FDLogo" src="https://github.com/user-attachments/assets/669bc6c4-acb5-4d0b-b27f-9533613b28a2" />
