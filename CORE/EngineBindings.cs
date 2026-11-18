@@ -76,8 +76,8 @@ namespace FlightDeck_BF6_Flight_Configurator.CORE
         public static readonly IReadOnlyDictionary<string, ConceptSlot[]> ActionSlots =
             new Dictionary<string, ConceptSlot[]>(StringComparer.OrdinalIgnoreCase)
             {
-                ["Ascend"] = [new("ConceptBrake", 3, 0)],
-                ["Descend"] = [new("ConceptBrake", 2, 1)],
+                ["Ascend"] = [new("ConceptMoveFB", 2, 0)],
+                ["Descend"] = [new("ConceptMoveFB", 5, 1)],
                 ["ThrottleAxis"] = [new("ConceptMoveFB", 2, 0)],
                 ["Afterburner"] = [new("ConceptSprint", 1, 0)],
                 ["Fire"] = [new("ConceptFire", 1, 0)],
@@ -134,8 +134,8 @@ namespace FlightDeck_BF6_Flight_Configurator.CORE
 
             Add("ConceptBrake", 0, 0, 57, 0, 2);
             Add("ConceptBrake", 1, 0, 29, 1, 2);
-            Add("ConceptBrake", 2, 56, 16, 1, 1);
-            Add("ConceptBrake", 3, 56, 17, 0, 1);
+            Add("ConceptBrake", 2, 56, 60, 1, 1);
+            Add("ConceptBrake", 3, 56, 60, 0, 1);
             Add("ConceptBrake", 4, 56, 60, 1, 3);
 
             Add("ConceptBreathControl", 0, 56, 8, 0, 0);
@@ -175,9 +175,10 @@ namespace FlightDeck_BF6_Flight_Configurator.CORE
 
             Add("ConceptMoveFB", 0, 0, 17, 0, 2);
             Add("ConceptMoveFB", 1, 0, 31, 1, 2);
-            Add("ConceptMoveFB", 2, 1, 60, 0, 1);
+            Add("ConceptMoveFB", 2, 56, 15, 0, 1);
             Add("ConceptMoveFB", 3, 56, 60, 0, 3);
             Add("ConceptMoveFB", 4, 56, 60, 1, 3);
+            Add("ConceptMoveFB", 5, 56, 14, 1, 1);
 
             Add("ConceptNextPosition", 0, 56, 5, 0, 1);
             Add("ConceptNextPosition", 1, 0, 255, 0, 2);

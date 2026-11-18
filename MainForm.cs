@@ -292,9 +292,6 @@ namespace FlightDeck_BF6_Flight_Configurator
                     scheme.BindAction(domain, e.Concept, targetPadBind);
                 }
 
-                if (e.Concept is "Ascend" or "Descend")
-                    scheme.BindAction(domain, "ThrottleAxis", EngineBindings.PadInput.Unbound);
-
                 RefreshBindingPreview();
                 string actionName = FDControllerVisualizer.FormatActionName(e.Concept, domain);
                 ConsoleLog($"[REMAP] {vehicleName}: Bound {_padVisualizer.GetFriendlySlotName(e.SlotKey)} -> {actionName} (GstKeyBinding.version 2000007).");

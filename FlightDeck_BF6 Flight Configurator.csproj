@@ -10,9 +10,9 @@
 		<AssemblyTitle>FlightDeck | BF6 Flight Configurator</AssemblyTitle>
 		<AssemblyName>Flight Deck</AssemblyName>
 		<Company>Void Tech Studios</Company>
-		<Product>FlightDeck | BF6 Flight Configurator</Product>
+		<Product>Flight Deck | BF6 Flight Configurator</Product>
 		<Copyright>Copyright © 2026 Void Tech Studios</Copyright>
-		<Version>2.0.0.0</Version>
+		<Version>2.0.1.0</Version>
 		<NoWarn>$(NoWarn);WFO1000</NoWarn>
 		<ApplicationIcon>FDIcon.ico</ApplicationIcon>
 	</PropertyGroup>

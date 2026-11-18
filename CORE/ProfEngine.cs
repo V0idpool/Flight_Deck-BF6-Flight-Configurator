@@ -127,6 +127,10 @@ namespace FlightDeck_BF6_Flight_Configurator.CORE
                     if (k.StartsWith("GstKeyBinding.helicopter.", StringComparison.Ordinal))
                         targetScheme.RawVariables[k] = v;
                 }
+                targetScheme.RawVariables["GstKeyBinding.helicopter.ConceptBrake.2.axis"] = "56";
+                targetScheme.RawVariables["GstKeyBinding.helicopter.ConceptBrake.2.button"] = "60";
+                targetScheme.RawVariables["GstKeyBinding.helicopter.ConceptBrake.3.axis"] = "56";
+                targetScheme.RawVariables["GstKeyBinding.helicopter.ConceptBrake.3.button"] = "60";
                 targetScheme.HasCustomHeliBinds = true;
                 targetScheme.RawVariables["GstInput.Scheme5Buttons"] = "4";
             }

@@ -82,7 +82,7 @@ namespace FlightDeck_BF6_Flight_Configurator.CORE
                     if (normDomain == "helicopter" && slot.Concept == "ConceptSprint")
                         continue;
 
-                    int neg = (slot.Concept == "ConceptBrake" || slot.Concept == "ConceptPitch") && !bind.IsStickAxis
+                    int neg = (slot.Concept is "ConceptMoveFB" or "ConceptBrake" or "ConceptPitch") && !bind.IsStickAxis
                         ? slot.DefaultNegate
                         : bind.Negate;
 
@@ -221,14 +221,12 @@ namespace FlightDeck_BF6_Flight_Configurator.CORE
                     if (triggersAreThrottle)
                     {
                         scheme.BindHeliAction("Ascend", PadInput.RightTrigger_RT)
-                              .BindHeliAction("Descend", PadInput.LeftTrigger_LT)
-                              .BindHeliAction("ThrottleAxis", PadInput.Unbound);
+                              .BindHeliAction("Descend", PadInput.LeftTrigger_LT);
                     }
                     else
                     {
                         scheme.BindHeliAction("ThrottleAxis", throttleAxis)
-                              .BindHeliAction("Ascend", PadInput.RightBumper_RB)
-                              .BindHeliAction("Descend", PadInput.LeftBumper_LB);
+                              .BindHeliAction("Descend", PadInput.Unbound);
                     }
                 }
                 else if (IsThrottleBoundToStick(scheme.RawVariables, "helicopter"))
@@ -241,14 +239,12 @@ namespace FlightDeck_BF6_Flight_Configurator.CORE
                     if (triggersAreThrottle)
                     {
                         scheme.BindJetAction("Ascend", PadInput.RightTrigger_RT)
-                              .BindJetAction("Descend", PadInput.LeftTrigger_LT)
-                              .BindJetAction("ThrottleAxis", PadInput.Unbound);
+                              .BindJetAction("Descend", PadInput.LeftTrigger_LT);
                     }
                     else
                     {
                         scheme.BindJetAction("ThrottleAxis", throttleAxis)
-                              .BindJetAction("Ascend", PadInput.RightBumper_RB)
-                              .BindJetAction("Descend", PadInput.LeftBumper_LB);
+                              .BindJetAction("Descend", PadInput.Unbound);
                     }
                 }
                 else if (IsThrottleBoundToStick(scheme.RawVariables, "jet"))
@@ -308,7 +304,6 @@ namespace FlightDeck_BF6_Flight_Configurator.CORE
 
                 scheme.BindHeliAction("Ascend", PadInput.RightTrigger_RT)
                       .BindHeliAction("Descend", PadInput.LeftTrigger_LT)
-                      .BindHeliAction("ThrottleAxis", PadInput.Unbound)
                       .BindHeliAction("Fire", PadInput.LeftBumper_LB)
                       .BindHeliAction("Countermeasures", PadInput.RightBumper_RB)
                       .BindHeliAction("Zoom", PadInput.RightStickClick)
@@ -322,7 +317,6 @@ namespace FlightDeck_BF6_Flight_Configurator.CORE
 
                 scheme.BindJetAction("Ascend", PadInput.RightTrigger_RT)
                       .BindJetAction("Descend", PadInput.LeftTrigger_LT)
-                      .BindJetAction("ThrottleAxis", PadInput.Unbound)
                       .BindJetAction("Afterburner", PadInput.LeftStickClick)
                       .BindJetAction("Fire", PadInput.LeftBumper_LB)
                       .BindJetAction("Countermeasures", PadInput.RightBumper_RB)
@@ -376,7 +370,6 @@ namespace FlightDeck_BF6_Flight_Configurator.CORE
 
                 scheme.BindHeliAction("Ascend", PadInput.RightTrigger_RT)
                       .BindHeliAction("Descend", PadInput.LeftTrigger_LT)
-                      .BindHeliAction("ThrottleAxis", PadInput.Unbound)
                       .BindHeliAction("Fire", PadInput.LeftBumper_LB)
                       .BindHeliAction("Countermeasures", PadInput.RightBumper_RB)
                       .BindHeliAction("Zoom", PadInput.DPadUp)
@@ -388,7 +381,6 @@ namespace FlightDeck_BF6_Flight_Configurator.CORE
 
                 scheme.BindJetAction("Ascend", PadInput.RightTrigger_RT)
                       .BindJetAction("Descend", PadInput.LeftTrigger_LT)
-                      .BindJetAction("ThrottleAxis", PadInput.Unbound)
                       .BindJetAction("Afterburner", PadInput.LeftStickClick)
                       .BindJetAction("Fire", PadInput.LeftBumper_LB)
                       .BindJetAction("Countermeasures", PadInput.RightBumper_RB)
@@ -441,7 +433,6 @@ namespace FlightDeck_BF6_Flight_Configurator.CORE
 
                 scheme.BindHeliAction("Ascend", PadInput.RightTrigger_RT)
                       .BindHeliAction("Descend", PadInput.LeftTrigger_LT)
-                      .BindHeliAction("ThrottleAxis", PadInput.Unbound)
                       .BindHeliAction("Fire", PadInput.LeftBumper_LB)
                       .BindHeliAction("Zoom", PadInput.RightBumper_RB)
                       .BindHeliAction("Countermeasures", PadInput.DPadLeft)
@@ -453,7 +444,6 @@ namespace FlightDeck_BF6_Flight_Configurator.CORE
 
                 scheme.BindJetAction("Ascend", PadInput.RightTrigger_RT)
                       .BindJetAction("Descend", PadInput.LeftTrigger_LT)
-                      .BindJetAction("ThrottleAxis", PadInput.Unbound)
                       .BindJetAction("Afterburner", PadInput.LeftStickClick)
                       .BindJetAction("Fire", PadInput.LeftBumper_LB)
                       .BindJetAction("Zoom", PadInput.RightBumper_RB)

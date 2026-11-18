@@ -29,12 +29,10 @@
                 }
 
                 System.Diagnostics.Debug.WriteLine($"Error details logged to: {logFilePath}");
-                ExceptionHandler.LogError(ex);
             }
             catch (Exception logEx)
             {
                 System.Diagnostics.Debug.WriteLine("Error logging failed: " + logEx.Message);
-                ExceptionHandler.LogError(logEx);
             }
         }
         public static void LogMessage(string message)
